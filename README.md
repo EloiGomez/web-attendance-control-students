@@ -1,4 +1,4 @@
-# Control d'Assistència
+# Attendance Control
 
 A lightweight school attendance tracker built with **Google Apps Script**, created to replace a slow, unwieldy multi-tab Excel spreadsheet used by an entire primary school to log daily student absences.
 
@@ -25,7 +25,26 @@ A small web app served directly from Google Apps Script, backed by a Google Shee
 
 ## Status
 
-Functional prototype, tested with synthetic data (hundreds of students, thousands of attendance records). Contains no real student data — the `Alumnes` sheet ships with example names only.
+Functional prototype, tested with synthetic data (hundreds of students, thousands of attendance records). Contains no real student data — the `Students` sheet ships with example names only.
+
+## Setup & deployment
+
+No local environment or build step is needed — everything runs inside Google's own infrastructure.
+
+1. Create a new blank spreadsheet at [sheets.google.com](https://sheets.google.com).
+2. Open **Extensions → Apps Script**. This creates an Apps Script project bound to that spreadsheet.
+3. In the default `Code.gs` file, delete the placeholder content and paste in this repo's [`Code.gs`](Code.gs).
+4. Add a new **HTML** file (the `+` next to "Files"), name it exactly `Index` (no extension), and paste in this repo's [`Index.html`](Index.html).
+5. Save the project.
+6. In the function dropdown at the top, select **`setup`** and click **Run**. The first run will ask you to authorize the script — accept it. This creates the `Config`, `Students`, `Teachers`, `Records` and `Promotion` sheets with example data and sane defaults.
+7. (Optional) Run **`generateTestStudents`** and **`generateTestRecords`** to load a few hundred synthetic students and attendance records, useful for trying out the summary view and sorting/search without typing anything by hand.
+8. Add the emails of anyone who should have access to the **`Teachers`** sheet — if that sheet is empty, the app lets anyone in, so this step matters before sharing the link.
+9. Go to **Deploy → New deployment**, choose type **Web app**. Set:
+   - **Execute as**: *User accessing the web app* — so each visitor's own Google identity is what the access-control check (and the "updated by" audit column) actually sees.
+   - **Who has access**: *Anyone with a Google account* (or *Anyone within [domain]*, if deploying under a Google Workspace organization).
+10. Click **Deploy**, then open the resulting `.../exec` URL. The first time each user opens it, Google will ask them to authorize the app for their own account — that's expected, since it runs as each visitor rather than as the developer.
+
+To ship a later code change, edit the files, save, then **Deploy → Manage deployments → ✏️ → Version: New version → Deploy** — the same `.../exec` URL keeps working, it just starts serving the updated code.
 
 ## Files
 

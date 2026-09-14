@@ -106,12 +106,12 @@
       margin-bottom: 12px;
       flex-wrap: wrap;
     }
-    .dia-info {
+    .day-info {
       font-size: 13px;
       color: var(--text-light);
       padding: 8px 0;
     }
-    .dia-info.cap-setmana { color: var(--amber); font-weight: 600; }
+    .day-info.weekend { color: var(--amber); font-weight: 600; }
     button.primary {
       padding: 10px 20px;
       background: var(--blue);
@@ -160,11 +160,11 @@
       box-shadow: 0 1px 0 var(--gray-border);
     }
     th.center, td.center { text-align: center; }
-    th.col-mati, td.col-mati { background: var(--blue-bg); }
-    th.col-tarda, td.col-tarda { background: var(--amber-bg); }
-    th.col-justificada, td.col-justificada { background: var(--green-bg); }
-    th.col-retard, td.col-retard { background: var(--purple-bg); }
-    tr:hover td:not(.col-mati):not(.col-tarda):not(.col-justificada):not(.col-retard) { background: var(--hover); }
+    th.col-morning, td.col-morning { background: var(--blue-bg); }
+    th.col-afternoon, td.col-afternoon { background: var(--amber-bg); }
+    th.col-justified, td.col-justified { background: var(--green-bg); }
+    th.col-late, td.col-late { background: var(--purple-bg); }
+    tr:hover td:not(.col-morning):not(.col-afternoon):not(.col-justified):not(.col-late) { background: var(--hover); }
     th:first-child, td:first-child {
       position: sticky;
       left: 0;
@@ -173,16 +173,16 @@
       z-index: 1;
     }
     th:first-child { z-index: 3; }
-    #taula-resum.oculta-classe .col-classe { display: none; }
-    #taula-resum th[data-key] { cursor: pointer; user-select: none; }
-    #taula-resum th[data-key]:hover { color: var(--text); }
-    #taula-resum th[data-key] .fletxa { margin-left: 4px; opacity: .5; }
-    #taula-resum th[data-key].actiu .fletxa { opacity: 1; }
+    #summary-table.hide-class .col-class { display: none; }
+    #summary-table th[data-key] { cursor: pointer; user-select: none; }
+    #summary-table th[data-key]:hover { color: var(--text); }
+    #summary-table th[data-key] .arrow { margin-left: 4px; opacity: .5; }
+    #summary-table th[data-key].sorted .arrow { opacity: 1; }
     input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
-    .chk-mati { accent-color: var(--blue); }
-    .chk-tarda { accent-color: var(--amber); }
-    .chk-justificada { accent-color: var(--green); }
-    .chk-retard-mati, .chk-retard-tarda { accent-color: var(--purple); }
+    .chk-morning { accent-color: var(--blue); }
+    .chk-afternoon { accent-color: var(--amber); }
+    .chk-justified { accent-color: var(--green); }
+    .chk-late-morning, .chk-late-afternoon { accent-color: var(--purple); }
     .badge {
       display: inline-block;
       padding: 2px 8px;
@@ -191,8 +191,8 @@
       font-weight: 600;
     }
     .badge.ok { background: var(--green-bg); color: var(--green); }
-    .badge.advertencia { background: var(--amber-bg); color: var(--amber); }
-    .badge.alerta { background: var(--red-bg); color: var(--red); }
+    .badge.warning { background: var(--amber-bg); color: var(--amber); }
+    .badge.alert { background: var(--red-bg); color: var(--red); }
     .empty-state {
       color: var(--text-light);
       font-size: 13px;
@@ -215,7 +215,7 @@
       align-items: center;
       margin-top: 16px;
     }
-    .llegenda {
+    .legend {
       font-size: 12px;
       color: var(--text-light);
     }
@@ -231,93 +231,91 @@
 </head>
 <body>
 
-  <h1>📋 Control d'Assistència</h1>
+  <h1>📋 Attendance Control</h1>
 
   <div class="tabs">
-    <button class="tab-btn active" data-tab="llista">Passar llista</button>
-    <button class="tab-btn" data-tab="resum">Resum / % absentisme</button>
+    <button class="tab-btn active" data-tab="attendance">Take Attendance</button>
+    <button class="tab-btn" data-tab="summary">Summary / % Absenteeism</button>
   </div>
 
-  <!-- TAB: Passar llista -->
-  <div id="tab-llista" class="tab-panel active">
+  <!-- TAB: Take Attendance -->
+  <div id="tab-attendance" class="tab-panel active">
     <div class="filter-row">
       <div>
-        <label for="sel-classe">Classe</label>
-        <select id="sel-classe"><option>Carregant...</option></select>
+        <label for="class-select">Class</label>
+        <select id="class-select"><option>Loading...</option></select>
       </div>
       <div>
-        <label for="inp-data">Dia</label>
-        <input type="date" id="inp-data">
+        <label for="date-input">Date</label>
+        <input type="date" id="date-input">
       </div>
-      <div class="dia-info" id="dia-info"></div>
+      <div class="day-info" id="day-info"></div>
     </div>
 
     <div class="table-wrap">
-      <table id="taula-llista">
+      <table id="attendance-table">
         <thead>
           <tr>
-            <th>Alumne/a</th>
-            <th class="center col-mati">Matí</th>
-            <th class="center col-justificada">Justificada<span class="sub">matí</span></th>
-            <th class="center col-retard">Retard<span class="sub">matí</span></th>
-            <th class="center col-tarda">Tarda</th>
-            <th class="center col-justificada">Justificada<span class="sub">tarda</span></th>
-            <th class="center col-retard">Retard<span class="sub">tarda</span></th>
+            <th>Student</th>
+            <th class="center col-morning">Morning</th>
+            <th class="center col-justified">Justified<span class="sub">morning</span></th>
+            <th class="center col-late">Late<span class="sub">morning</span></th>
+            <th class="center col-afternoon">Afternoon</th>
+            <th class="center col-justified">Justified<span class="sub">afternoon</span></th>
+            <th class="center col-late">Late<span class="sub">afternoon</span></th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
-      <div class="empty-state" id="empty-llista" style="display:none;">
-        No hi ha alumnes en aquesta classe. Afegeix-los a la pestanya "Alumnes" del full de càlcul.
+      <div class="empty-state" id="empty-attendance" style="display:none;">
+        There are no students in this class. Add them in the "Students" tab of the spreadsheet.
       </div>
     </div>
 
     <div class="footer-actions">
-      <span class="llegenda">Matí + Tarda marcats a la vegada = dia complet</span>
-      <button class="primary" id="btn-guardar">Guardar canvis</button>
+      <span class="legend">Morning + Afternoon both checked = full day</span>
+      <button class="primary" id="save-btn">Save Changes</button>
     </div>
-    <div class="msg" id="msg-guardar"></div>
+    <div class="msg" id="save-msg"></div>
   </div>
 
-  <!-- TAB: Resum -->
-  <div id="tab-resum" class="tab-panel">
+  <!-- TAB: Summary -->
+  <div id="tab-summary" class="tab-panel">
     <div class="filter-row">
       <div>
-        <label for="sel-classe-resum">Filtrar per classe</label>
-        <select id="sel-classe-resum"><option value="">Totes les classes</option></select>
+        <label for="summary-class-select">Filter by class</label>
+        <select id="summary-class-select"><option value="">All classes</option></select>
       </div>
       <div>
-        <label for="cerca-resum">Cercar alumne</label>
-        <input type="search" id="cerca-resum" placeholder="Nom de l'alumne...">
+        <label for="summary-search">Search student</label>
+        <input type="search" id="summary-search" placeholder="Student name...">
       </div>
     </div>
     <div class="table-wrap">
-      <table id="taula-resum">
+      <table id="summary-table">
         <thead>
           <tr>
-            <th data-key="alumne" data-tipus="text">Alumne</th>
-            <th class="col-classe" data-key="classe" data-tipus="text">Classe</th>
-            <th class="center col-justificada" data-key="diesJustificats" data-tipus="num">Dies just.</th>
-            <th class="center" data-key="diesFaltaNoJustificades" data-tipus="num">Dies no just.</th>
-            <th class="center col-justificada" data-key="percentatgeJustificat" data-tipus="num">% just.<span class="sub">del curs</span></th>
-            <th class="center" data-key="percentatgeNoJustificat" data-tipus="num">% no just.<span class="sub">del curs</span></th>
-            <th class="center" data-key="percentatge" data-tipus="num">% TOTAL</th>
-            <th class="center col-justificada" data-key="ratioJustificacio" data-tipus="num">% faltes<span class="sub">justificades</span></th>
-            <th class="center col-retard" data-key="retardsMati" data-tipus="num">Retards<span class="sub">matí</span></th>
-            <th class="center col-retard" data-key="retardsTarda" data-tipus="num">Retards<span class="sub">tarda</span></th>
-            <th data-key="diaMesFrequent" data-tipus="text">Dies de falta per dia de la setmana</th>
+            <th data-key="student" data-type="text">Student</th>
+            <th class="col-class" data-key="className" data-type="text">Class</th>
+            <th class="center col-justified" data-key="justifiedDays" data-type="num">Justified days</th>
+            <th class="center" data-key="unjustifiedDays" data-type="num">Unjustified days</th>
+            <th class="center col-justified" data-key="justifiedPct" data-type="num">% justified<span class="sub">of year</span></th>
+            <th class="center" data-key="unjustifiedPct" data-type="num">% unjustified<span class="sub">of year</span></th>
+            <th class="center" data-key="totalPct" data-type="num">% TOTAL</th>
+            <th class="center col-justified" data-key="justificationRate" data-type="num">% absences<span class="sub">justified</span></th>
+            <th class="center col-late" data-key="lateMornings" data-type="num">Late<span class="sub">morning</span></th>
+            <th class="center col-late" data-key="lateAfternoons" data-type="num">Late<span class="sub">afternoon</span></th>
+            <th data-key="mostFrequentDay" data-type="text">Absences by weekday</th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
     </div>
-    <div class="empty-state" id="empty-resum" style="display:none;">No hi ha alumnes per mostrar.</div>
+    <div class="empty-state" id="empty-summary" style="display:none;">No students to show.</div>
   </div>
 
   <script>
-    const DIES_CAT = { 0: 'Diumenge', 6: 'Dissabte' };
-
-    function avui() {
+    function today() {
       const d = new Date();
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
@@ -331,213 +329,213 @@
         document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-        if (btn.dataset.tab === 'resum') carregarResum();
+        if (btn.dataset.tab === 'summary') loadSummary();
       });
     });
 
-    // ---------- Inicialització ----------
-    const selClasse = document.getElementById('sel-classe');
-    const inpData = document.getElementById('inp-data');
-    inpData.value = avui();
+    // ---------- Initialization ----------
+    const classSelect = document.getElementById('class-select');
+    const dateInput = document.getElementById('date-input');
+    dateInput.value = today();
 
-    function omplirSelectorClasses(selectEl, incloureTotes, callback) {
+    function populateClassSelect(selectEl, includeAll, callback) {
       google.script.run.withSuccessHandler((classes) => {
-        let html = incloureTotes ? '<option value="">Totes les classes</option>' : '';
+        let html = includeAll ? '<option value="">All classes</option>' : '';
         html += classes.map((c) => `<option value="${c}">${c}</option>`).join('');
-        selectEl.innerHTML = html || '<option value="">Sense classes</option>';
+        selectEl.innerHTML = html || '<option value="">No classes</option>';
         if (callback) callback();
       }).getClasses();
     }
 
-    omplirSelectorClasses(selClasse, false, carregarGraella);
-    omplirSelectorClasses(document.getElementById('sel-classe-resum'), true);
+    populateClassSelect(classSelect, false, loadAttendanceGrid);
+    populateClassSelect(document.getElementById('summary-class-select'), true);
 
-    selClasse.addEventListener('change', carregarGraella);
-    inpData.addEventListener('change', carregarGraella);
+    classSelect.addEventListener('change', loadAttendanceGrid);
+    dateInput.addEventListener('change', loadAttendanceGrid);
 
-    // ---------- Passar llista ----------
-    function carregarGraella() {
-      if (!selClasse.value || !inpData.value) return;
-      const tbody = document.querySelector('#taula-llista tbody');
-      tbody.innerHTML = '<tr><td colspan="7" class="loader">Carregant...</td></tr>';
-      document.getElementById('empty-llista').style.display = 'none';
-      document.getElementById('dia-info').textContent = '';
+    // ---------- Take Attendance ----------
+    function loadAttendanceGrid() {
+      if (!classSelect.value || !dateInput.value) return;
+      const tbody = document.querySelector('#attendance-table tbody');
+      tbody.innerHTML = '<tr><td colspan="7" class="loader">Loading...</td></tr>';
+      document.getElementById('empty-attendance').style.display = 'none';
+      document.getElementById('day-info').textContent = '';
 
       google.script.run
-        .withSuccessHandler((resposta) => {
-          const files = resposta.alumnes;
-          document.getElementById('empty-llista').style.display = files.length ? 'none' : 'block';
-          tbody.innerHTML = files.map((f) => `
-            <tr data-alumne="${escapeHtml_(f.alumne)}">
-              <td>${escapeHtml_(f.alumne)}</td>
-              <td class="center col-mati"><input type="checkbox" class="chk-mati" ${f.mati ? 'checked' : ''}></td>
-              <td class="center col-justificada"><input type="checkbox" class="chk-justificada-mati" ${f.justificadaMati ? 'checked' : ''} ${f.mati ? '' : 'disabled'}></td>
-              <td class="center col-retard"><input type="checkbox" class="chk-retard-mati" ${f.retardMati ? 'checked' : ''} ${f.mati ? 'disabled' : ''}></td>
-              <td class="center col-tarda"><input type="checkbox" class="chk-tarda" ${f.tarda ? 'checked' : ''}></td>
-              <td class="center col-justificada"><input type="checkbox" class="chk-justificada-tarda" ${f.justificadaTarda ? 'checked' : ''} ${f.tarda ? '' : 'disabled'}></td>
-              <td class="center col-retard"><input type="checkbox" class="chk-retard-tarda" ${f.retardTarda ? 'checked' : ''} ${f.tarda ? 'disabled' : ''}></td>
+        .withSuccessHandler((response) => {
+          const students = response.students;
+          document.getElementById('empty-attendance').style.display = students.length ? 'none' : 'block';
+          tbody.innerHTML = students.map((s) => `
+            <tr data-student="${escapeHtml_(s.student)}">
+              <td>${escapeHtml_(s.student)}</td>
+              <td class="center col-morning"><input type="checkbox" class="chk-morning" ${s.morning ? 'checked' : ''}></td>
+              <td class="center col-justified"><input type="checkbox" class="chk-justified-morning" ${s.justifiedMorning ? 'checked' : ''} ${s.morning ? '' : 'disabled'}></td>
+              <td class="center col-late"><input type="checkbox" class="chk-late-morning" ${s.lateMorning ? 'checked' : ''} ${s.morning ? 'disabled' : ''}></td>
+              <td class="center col-afternoon"><input type="checkbox" class="chk-afternoon" ${s.afternoon ? 'checked' : ''}></td>
+              <td class="center col-justified"><input type="checkbox" class="chk-justified-afternoon" ${s.justifiedAfternoon ? 'checked' : ''} ${s.afternoon ? '' : 'disabled'}></td>
+              <td class="center col-late"><input type="checkbox" class="chk-late-afternoon" ${s.lateAfternoon ? 'checked' : ''} ${s.afternoon ? 'disabled' : ''}></td>
             </tr>
           `).join('');
 
-          const diaInfoEl = document.getElementById('dia-info');
-          diaInfoEl.textContent = resposta.diaSetmana + (resposta.capDeSetmana ? ' — cap de setmana' : '');
-          diaInfoEl.className = 'dia-info' + (resposta.capDeSetmana ? ' cap-setmana' : '');
+          const dayInfoEl = document.getElementById('day-info');
+          dayInfoEl.textContent = response.weekday + (response.isWeekend ? ' — weekend' : '');
+          dayInfoEl.className = 'day-info' + (response.isWeekend ? ' weekend' : '');
         })
         .withFailureHandler((err) => {
           tbody.innerHTML = `<tr><td colspan="7" class="loader">Error: ${escapeHtml_(err.message)}</td></tr>`;
         })
-        .getGraella(selClasse.value, inpData.value);
+        .getAttendanceGrid(classSelect.value, dateInput.value);
     }
 
-    // Si es marca Matí, s'activa la seva "Justificada matí" i es desactiva el "Retard matí"
-    // (si ha faltat tot el matí, no té sentit comptar-ho també com a retard). Igual per la tarda.
-    document.querySelector('#taula-llista tbody').addEventListener('change', (ev) => {
-      if (!ev.target.matches('.chk-mati, .chk-tarda')) return;
+    // Checking Morning enables its "Justified morning" box and disables "Late morning"
+    // (a full morning absence isn't a late arrival). Same logic for the afternoon.
+    document.querySelector('#attendance-table tbody').addEventListener('change', (ev) => {
+      if (!ev.target.matches('.chk-morning, .chk-afternoon')) return;
       const tr = ev.target.closest('tr');
-      const chkMati = tr.querySelector('.chk-mati');
-      const chkTarda = tr.querySelector('.chk-tarda');
+      const chkMorning = tr.querySelector('.chk-morning');
+      const chkAfternoon = tr.querySelector('.chk-afternoon');
 
-      const chkJustMati = tr.querySelector('.chk-justificada-mati');
-      chkJustMati.disabled = !chkMati.checked;
-      if (!chkMati.checked) chkJustMati.checked = false;
+      const chkJustMorning = tr.querySelector('.chk-justified-morning');
+      chkJustMorning.disabled = !chkMorning.checked;
+      if (!chkMorning.checked) chkJustMorning.checked = false;
 
-      const chkJustTarda = tr.querySelector('.chk-justificada-tarda');
-      chkJustTarda.disabled = !chkTarda.checked;
-      if (!chkTarda.checked) chkJustTarda.checked = false;
+      const chkJustAfternoon = tr.querySelector('.chk-justified-afternoon');
+      chkJustAfternoon.disabled = !chkAfternoon.checked;
+      if (!chkAfternoon.checked) chkJustAfternoon.checked = false;
 
-      const chkRetardMati = tr.querySelector('.chk-retard-mati');
-      chkRetardMati.disabled = chkMati.checked;
-      if (chkMati.checked) chkRetardMati.checked = false;
+      const chkLateMorning = tr.querySelector('.chk-late-morning');
+      chkLateMorning.disabled = chkMorning.checked;
+      if (chkMorning.checked) chkLateMorning.checked = false;
 
-      const chkRetardTarda = tr.querySelector('.chk-retard-tarda');
-      chkRetardTarda.disabled = chkTarda.checked;
-      if (chkTarda.checked) chkRetardTarda.checked = false;
+      const chkLateAfternoon = tr.querySelector('.chk-late-afternoon');
+      chkLateAfternoon.disabled = chkAfternoon.checked;
+      if (chkAfternoon.checked) chkLateAfternoon.checked = false;
     });
 
-    document.getElementById('btn-guardar').addEventListener('click', () => {
-      const btn = document.getElementById('btn-guardar');
-      const msg = document.getElementById('msg-guardar');
+    document.getElementById('save-btn').addEventListener('click', () => {
+      const btn = document.getElementById('save-btn');
+      const msg = document.getElementById('save-msg');
       msg.className = 'msg';
 
-      const files = Array.from(document.querySelectorAll('#taula-llista tbody tr')).map((tr) => ({
-        alumne: tr.dataset.alumne,
-        mati: tr.querySelector('.chk-mati').checked,
-        tarda: tr.querySelector('.chk-tarda').checked,
-        justificadaMati: tr.querySelector('.chk-justificada-mati').checked,
-        justificadaTarda: tr.querySelector('.chk-justificada-tarda').checked,
-        retardMati: tr.querySelector('.chk-retard-mati').checked,
-        retardTarda: tr.querySelector('.chk-retard-tarda').checked,
+      const rows = Array.from(document.querySelectorAll('#attendance-table tbody tr')).map((tr) => ({
+        student: tr.dataset.student,
+        morning: tr.querySelector('.chk-morning').checked,
+        afternoon: tr.querySelector('.chk-afternoon').checked,
+        justifiedMorning: tr.querySelector('.chk-justified-morning').checked,
+        justifiedAfternoon: tr.querySelector('.chk-justified-afternoon').checked,
+        lateMorning: tr.querySelector('.chk-late-morning').checked,
+        lateAfternoon: tr.querySelector('.chk-late-afternoon').checked,
       }));
 
-      if (!files.length) return;
+      if (!rows.length) return;
 
       btn.disabled = true;
-      btn.textContent = 'Guardant...';
+      btn.textContent = 'Saving...';
 
       google.script.run
         .withSuccessHandler(() => {
           btn.disabled = false;
-          btn.textContent = 'Guardar canvis';
-          msg.textContent = '✓ Guardat correctament.';
+          btn.textContent = 'Save Changes';
+          msg.textContent = '✓ Saved successfully.';
           msg.className = 'msg ok';
           setTimeout(() => { msg.className = 'msg'; }, 2500);
         })
         .withFailureHandler((err) => {
           btn.disabled = false;
-          btn.textContent = 'Guardar canvis';
+          btn.textContent = 'Save Changes';
           msg.textContent = 'Error: ' + err.message;
           msg.className = 'msg err';
         })
-        .guardarGraella(selClasse.value, inpData.value, files);
+        .saveAttendanceGrid(classSelect.value, dateInput.value, rows);
     });
 
-    // ---------- Resum ----------
-    let resumComplet = [];
-    let ordreClau = 'percentatge';
-    let ordreDir = 'desc';
+    // ---------- Summary ----------
+    let fullSummary = [];
+    let sortKey = 'totalPct';
+    let sortDir = 'desc';
 
-    document.getElementById('sel-classe-resum').addEventListener('change', carregarResum);
-    document.getElementById('cerca-resum').addEventListener('input', pintarResum);
+    document.getElementById('summary-class-select').addEventListener('change', loadSummary);
+    document.getElementById('summary-search').addEventListener('input', renderSummary);
 
-    document.querySelectorAll('#taula-resum th[data-key]').forEach((th) => {
+    document.querySelectorAll('#summary-table th[data-key]').forEach((th) => {
       th.addEventListener('click', () => {
         const key = th.dataset.key;
-        if (ordreClau === key) {
-          ordreDir = ordreDir === 'asc' ? 'desc' : 'asc';
+        if (sortKey === key) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
         } else {
-          ordreClau = key;
-          ordreDir = th.dataset.tipus === 'text' ? 'asc' : 'desc';
+          sortKey = key;
+          sortDir = th.dataset.type === 'text' ? 'asc' : 'desc';
         }
-        pintarResum();
+        renderSummary();
       });
     });
 
-    function actualitzarIndicadorsOrdre() {
-      document.querySelectorAll('#taula-resum th[data-key]').forEach((th) => {
-        th.classList.remove('actiu');
-        const fletxaExistent = th.querySelector('.fletxa');
-        if (fletxaExistent) fletxaExistent.remove();
-        if (th.dataset.key === ordreClau) {
-          th.classList.add('actiu');
+    function updateSortIndicators() {
+      document.querySelectorAll('#summary-table th[data-key]').forEach((th) => {
+        th.classList.remove('sorted');
+        const existingArrow = th.querySelector('.arrow');
+        if (existingArrow) existingArrow.remove();
+        if (th.dataset.key === sortKey) {
+          th.classList.add('sorted');
           const span = document.createElement('span');
-          span.className = 'fletxa';
-          span.textContent = ordreDir === 'asc' ? '▲' : '▼';
+          span.className = 'arrow';
+          span.textContent = sortDir === 'asc' ? '▲' : '▼';
           th.appendChild(span);
         }
       });
     }
 
-    function carregarResum() {
-      const tbody = document.querySelector('#taula-resum tbody');
-      tbody.innerHTML = '<tr><td colspan="11" class="loader">Carregant...</td></tr>';
-      const classe = document.getElementById('sel-classe-resum').value;
+    function loadSummary() {
+      const tbody = document.querySelector('#summary-table tbody');
+      tbody.innerHTML = '<tr><td colspan="11" class="loader">Loading...</td></tr>';
+      const className = document.getElementById('summary-class-select').value;
 
-      document.getElementById('taula-resum').classList.toggle('oculta-classe', !!classe);
+      document.getElementById('summary-table').classList.toggle('hide-class', !!className);
 
       google.script.run
-        .withSuccessHandler((files) => {
-          resumComplet = files;
-          pintarResum();
+        .withSuccessHandler((rows) => {
+          fullSummary = rows;
+          renderSummary();
         })
         .withFailureHandler((err) => {
           tbody.innerHTML = `<tr><td colspan="11" class="loader">Error: ${escapeHtml_(err.message)}</td></tr>`;
         })
-        .getResum(classe);
+        .getSummary(className);
     }
 
-    function pintarResum() {
-      const tbody = document.querySelector('#taula-resum tbody');
-      const cerca = document.getElementById('cerca-resum').value.trim().toLowerCase();
-      let files = cerca
-        ? resumComplet.filter((f) => f.alumne.toLowerCase().includes(cerca))
-        : resumComplet.slice();
+    function renderSummary() {
+      const tbody = document.querySelector('#summary-table tbody');
+      const search = document.getElementById('summary-search').value.trim().toLowerCase();
+      let rows = search
+        ? fullSummary.filter((r) => r.student.toLowerCase().includes(search))
+        : fullSummary.slice();
 
-      files.sort((a, b) => {
-        const va = a[ordreClau];
-        const vb = b[ordreClau];
-        // Els "—" (sense faltes, valor null) sempre van al final, sigui quin sigui l'ordre.
+      rows.sort((a, b) => {
+        const va = a[sortKey];
+        const vb = b[sortKey];
+        // "—" entries (no absences, null value) always go last, regardless of sort direction.
         if (va === null && vb === null) return 0;
         if (va === null) return 1;
         if (vb === null) return -1;
-        const cmp = typeof va === 'string' ? va.localeCompare(vb, 'ca') : va - vb;
-        return ordreDir === 'asc' ? cmp : -cmp;
+        const cmp = typeof va === 'string' ? va.localeCompare(vb, 'en') : va - vb;
+        return sortDir === 'asc' ? cmp : -cmp;
       });
 
-      actualitzarIndicadorsOrdre();
-      document.getElementById('empty-resum').style.display = files.length ? 'none' : 'block';
-      tbody.innerHTML = files.map((f) => `
+      updateSortIndicators();
+      document.getElementById('empty-summary').style.display = rows.length ? 'none' : 'block';
+      tbody.innerHTML = rows.map((r) => `
         <tr>
-          <td>${escapeHtml_(f.alumne)}</td>
-          <td class="col-classe">${escapeHtml_(f.classe)}</td>
-          <td class="center col-justificada">${f.diesJustificats}</td>
-          <td class="center">${f.diesFaltaNoJustificades}</td>
-          <td class="center col-justificada">${f.percentatgeJustificat}%</td>
-          <td class="center">${f.percentatgeNoJustificat}%</td>
-          <td class="center"><span class="badge ${f.nivell}">${f.percentatge}%</span></td>
-          <td class="center col-justificada">${f.ratioJustificacio === null ? '—' : f.ratioJustificacio + '%'}</td>
-          <td class="center col-retard">${f.retardsMati}</td>
-          <td class="center col-retard">${f.retardsTarda}</td>
-          <td>${escapeHtml_(f.diaMesFrequent)}</td>
+          <td>${escapeHtml_(r.student)}</td>
+          <td class="col-class">${escapeHtml_(r.className)}</td>
+          <td class="center col-justified">${r.justifiedDays}</td>
+          <td class="center">${r.unjustifiedDays}</td>
+          <td class="center col-justified">${r.justifiedPct}%</td>
+          <td class="center">${r.unjustifiedPct}%</td>
+          <td class="center"><span class="badge ${r.level}">${r.totalPct}%</span></td>
+          <td class="center col-justified">${r.justificationRate === null ? '—' : r.justificationRate + '%'}</td>
+          <td class="center col-late">${r.lateMornings}</td>
+          <td class="center col-late">${r.lateAfternoons}</td>
+          <td>${escapeHtml_(r.mostFrequentDay)}</td>
         </tr>
       `).join('');
     }

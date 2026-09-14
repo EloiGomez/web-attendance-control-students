@@ -1,62 +1,63 @@
 /**
- * Control d'Assistència — backend (Google Apps Script)
+ * Attendance Control — backend (Google Apps Script)
  *
- * Fulls de càlcul que fa servir aquest script:
- *  - Config     : paràmetres del curs (dies lectius, pesos de cada franja, llindar d'alerta)
- *  - Alumnes    : llistat d'alumnes (Classe | Alumne)
- *  - Professors : emails autoritzats a entrar a la web (llista blanca)
- *  - Registre   : una fila per alumne i dia amb alguna marca (falta o retard)
+ * Sheets used by this script:
+ *  - Config   : course settings (school days, weight per half-day, alert threshold)
+ *  - Students : student roster (Class | Student)
+ *  - Teachers : emails authorized to access the web app (allow-list)
+ *  - Records  : one row per student and day with any mark (absence or late arrival)
  *
- * Executa la funció setup() UNA SOLA VEGADA des de l'editor d'Apps Script
- * per crear aquests fulls amb les capçaleres i valors per defecte.
+ * Run setup() ONCE from the Apps Script editor to create these sheets with
+ * their headers and default values.
  */
 
 const SHEET_CONFIG = 'Config';
-const SHEET_ALUMNES = 'Alumnes';
-const SHEET_PROFESSORS = 'Professors';
-const SHEET_REGISTRE = 'Registre';
+const SHEET_STUDENTS = 'Students';
+const SHEET_TEACHERS = 'Teachers';
+const SHEET_RECORDS = 'Records';
+const SHEET_PROMOTION = 'Promotion';
 
 /**
- * Demanar la Spreadsheet activa a Google té un cost real de xarxa cada vegada
- * que es fa. Aquesta funció la demana un sol cop per execució i la reutilitza,
- * en comptes que cada funció la torni a demanar pel seu compte.
+ * Asking Google for the active Spreadsheet has a real network cost every time
+ * it's done. This function requests it once per execution and reuses it,
+ * instead of every function fetching it again on its own.
  */
 let _ss = null;
-function ss_() {
+function spreadsheet_() {
   if (!_ss) _ss = SpreadsheetApp.getActiveSpreadsheet();
   return _ss;
 }
 
 /**
- * Numeret que es guarda de forma permanent (PropertiesService) i que s'incrementa
- * cada vegada que es guarda un canvi a "Registre". getResum() l'inclou en la clau
- * del seu caché, així que en incrementar-lo, qualsevol resultat de Resum guardat
- * en caché queda automàticament invalidat (obsolet) sense haver-lo d'esborrar.
+ * A small counter, stored permanently (PropertiesService), incremented every
+ * time a change is saved to "Records". getSummary() includes it in its cache
+ * key, so bumping it automatically invalidates any cached Summary result
+ * without having to delete it.
  */
-function versioRegistre_() {
-  return PropertiesService.getScriptProperties().getProperty('REGISTRE_VERSIO') || '0';
+function recordsVersion_() {
+  return PropertiesService.getScriptProperties().getProperty('RECORDS_VERSION') || '0';
 }
-function incrementarVersioRegistre_() {
+function incrementRecordsVersion_() {
   const props = PropertiesService.getScriptProperties();
-  const actual = Number(props.getProperty('REGISTRE_VERSIO') || '0');
-  props.setProperty('REGISTRE_VERSIO', String(actual + 1));
+  const current = Number(props.getProperty('RECORDS_VERSION') || '0');
+  props.setProperty('RECORDS_VERSION', String(current + 1));
 }
 
 function doGet() {
-  if (!usuariAutoritzat_()) {
-    const emailDetectat = emailActual_() || '(cap email detectat — potser cal compartir la Sheet amb aquest usuari)';
+  if (!isAuthorizedUser_()) {
+    const detectedEmail = currentEmail_() || '(no email detected — you may need to share the Sheet with this user)';
     return HtmlService.createHtmlOutput(
       '<p style="font-family:sans-serif;padding:24px;">' +
-      '🔒 Accés denegat. Aquesta aplicació és només per a professors del centre.<br>' +
-      'Si creus que hauries de tenir accés, demana que afegeixin el teu email a la pestanya "Professors".<br><br>' +
-      '<b>Email detectat pel sistema:</b> ' + emailDetectat +
+      '🔒 Access denied. This application is for school staff only.<br>' +
+      'If you think you should have access, ask someone to add your email to the "Teachers" tab.<br><br>' +
+      '<b>Email detected by the system:</b> ' + detectedEmail +
       '</p>'
-    ).setTitle("Control d'Assistència");
+    ).setTitle('Attendance Control');
   }
 
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
-    .setTitle("Control d'Assistència")
+    .setTitle('Attendance Control')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -65,7 +66,7 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-function emailActual_() {
+function currentEmail_() {
   try {
     return (Session.getActiveUser().getEmail() || '').toLowerCase();
   } catch (e) {
@@ -74,12 +75,12 @@ function emailActual_() {
 }
 
 /**
- * Si la pestanya "Professors" no té cap email, es deixa entrar a tothom
- * (per no bloquejar-vos abans de configurar-la). En quant hi hagi almenys
- * un email a la llista, només aquests podran entrar-hi.
+ * If the "Teachers" tab has no emails at all, everyone is let in (so you
+ * don't lock yourself out before configuring it). As soon as there is at
+ * least one email in the list, only those can get in.
  */
-function usuariAutoritzat_() {
-  const sh = ss_().getSheetByName(SHEET_PROFESSORS);
+function isAuthorizedUser_() {
+  const sh = spreadsheet_().getSheetByName(SHEET_TEACHERS);
   if (!sh) return true;
 
   const lastRow = sh.getLastRow();
@@ -91,154 +92,153 @@ function usuariAutoritzat_() {
 
   if (emails.length === 0) return true;
 
-  return emails.indexOf(emailActual_()) !== -1;
+  return emails.indexOf(currentEmail_()) !== -1;
 }
 
 /**
- * Crea (si no existeixen) els fulls Config, Alumnes, Professors i Registre.
- * Es pot tornar a executar sense por: no esborra dades ja introduïdes.
+ * Creates (if missing) the Config, Students, Teachers, Records and Promotion
+ * sheets. Safe to run again: it never deletes data that's already there.
  */
 function setup() {
-  const ss = ss_();
+  const ss = spreadsheet_();
 
   let cfg = ss.getSheetByName(SHEET_CONFIG);
   if (!cfg) {
     cfg = ss.insertSheet(SHEET_CONFIG);
     cfg.getRange(1, 1, 5, 3).setValues([
-      ['Clau', 'Valor', 'Descripció'],
-      ['TOTAL_DIES_LECTIUS', 177, 'Dies lectius totals del curs (per calcular el %)'],
-      ['PES_MATI', 2 / 3, 'Quina part d\'un dia compta una falta de matí'],
-      ['PES_TARDA', 1 / 3, 'Quina part d\'un dia compta una falta de tarda (matí+tarda = dia complet)'],
-      ['UMBRAL_ALERTA_PCT', 10, 'A partir de quin % es marca l\'alumne en alerta al Resum'],
+      ['Key', 'Value', 'Description'],
+      ['TOTAL_SCHOOL_DAYS', 177, 'Total school days in the year (used to calculate the %)'],
+      ['WEIGHT_MORNING', 2 / 3, 'How much of a full day a morning absence counts as'],
+      ['WEIGHT_AFTERNOON', 1 / 3, 'How much of a full day an afternoon absence counts as (morning+afternoon = full day)'],
+      ['ALERT_THRESHOLD_PCT', 10, 'The % at which a student is flagged as an alert in the Summary'],
     ]);
     cfg.setFrozenRows(1);
     cfg.autoResizeColumns(1, 3);
   }
 
-  let al = ss.getSheetByName(SHEET_ALUMNES);
-  if (!al) {
-    al = ss.insertSheet(SHEET_ALUMNES);
-    al.getRange(1, 1, 4, 3).setValues([
-      ['Classe', 'Alumne', 'No promocionar (repetidor)'],
-      ['P3A', 'Alumne Exemple 1', false],
-      ['P3A', 'Alumna Exemple 2', false],
-      ['P4B', 'Alumne Exemple 3', false],
+  let students = ss.getSheetByName(SHEET_STUDENTS);
+  if (!students) {
+    students = ss.insertSheet(SHEET_STUDENTS);
+    students.getRange(1, 1, 4, 3).setValues([
+      ['Class', 'Student', 'Do not promote (repeating)'],
+      ['K3A', 'Example Student 1', false],
+      ['K3A', 'Example Student 2', false],
+      ['K4B', 'Example Student 3', false],
     ]);
-    al.setFrozenRows(1);
-    al.autoResizeColumns(1, 3);
-  } else if (al.getRange(1, 3).getValue() === '') {
-    // Migració d'un full antic sense la columna de repetidors.
-    al.getRange(1, 3).setValue('No promocionar (repetidor)');
+    students.setFrozenRows(1);
+    students.autoResizeColumns(1, 3);
+  } else if (students.getRange(1, 3).getValue() === '') {
+    // Migrating an older sheet that doesn't have the "repeating" column yet.
+    students.getRange(1, 3).setValue('Do not promote (repeating)');
   }
 
-  let promo = ss.getSheetByName('Promocio');
-  if (!promo) {
-    promo = ss.insertSheet('Promocio');
-    promo.getRange(1, 1, 10, 2).setValues([
-      ['Classe actual', 'Classe nova (buit = surt del centre, ex. 6è que es gradua)'],
-      ['P3A', 'P4A'], ['P3B', 'P4B'],
-      ['P4A', 'P5A'], ['P4B', 'P5B'],
-      ['P5A', '1rA'], ['P5B', '1rB'],
+  let promotion = ss.getSheetByName(SHEET_PROMOTION);
+  if (!promotion) {
+    promotion = ss.insertSheet(SHEET_PROMOTION);
+    promotion.getRange(1, 1, 10, 2).setValues([
+      ['Current class', 'New class (blank = leaves the school, e.g. Grade 6 graduating)'],
+      ['K3A', 'K4A'], ['K3B', 'K4B'],
+      ['K4A', 'K5A'], ['K4B', 'K5B'],
+      ['K5A', 'G1A'], ['K5B', 'G1B'],
       ['...', '...'],
-      ['6èA', ''], ['6èB', ''],
+      ['G6A', ''], ['G6B', ''],
     ]);
-    promo.setFrozenRows(1);
-    promo.autoResizeColumns(1, 2);
+    promotion.setFrozenRows(1);
+    promotion.autoResizeColumns(1, 2);
   }
 
-  let prof = ss.getSheetByName(SHEET_PROFESSORS);
-  if (!prof) {
-    prof = ss.insertSheet(SHEET_PROFESSORS);
-    prof.getRange(1, 1, 1, 2).setValues([['Email', 'Nom (opcional)']]);
-    const meuEmail = emailActual_();
-    if (meuEmail) {
-      prof.getRange(2, 1, 1, 2).setValues([[meuEmail, 'Afegit automàticament en fer setup()']]);
+  let teachers = ss.getSheetByName(SHEET_TEACHERS);
+  if (!teachers) {
+    teachers = ss.insertSheet(SHEET_TEACHERS);
+    teachers.getRange(1, 1, 1, 2).setValues([['Email', 'Name (optional)']]);
+    const myEmail = currentEmail_();
+    if (myEmail) {
+      teachers.getRange(2, 1, 1, 2).setValues([[myEmail, 'Added automatically by setup()']]);
     }
-    prof.setFrozenRows(1);
-    prof.autoResizeColumns(1, 2);
+    teachers.setFrozenRows(1);
+    teachers.autoResizeColumns(1, 2);
   }
 
-  let reg = ss.getSheetByName(SHEET_REGISTRE);
-  if (!reg) {
-    reg = ss.insertSheet(SHEET_REGISTRE);
-    reg.getRange(1, 1, 1, 11).setValues([
-      ['Data', 'Classe', 'Alumne', 'Matí', 'Tarda', 'Justificada matí', 'Justificada tarda', 'Retard matí', 'Retard tarda', 'Actualitzat per', 'Última actualització'],
+  let records = ss.getSheetByName(SHEET_RECORDS);
+  if (!records) {
+    records = ss.insertSheet(SHEET_RECORDS);
+    records.getRange(1, 1, 1, 11).setValues([
+      ['Date', 'Class', 'Student', 'Morning', 'Afternoon', 'Justified Morning', 'Justified Afternoon', 'Late Morning', 'Late Afternoon', 'Updated By', 'Last Updated'],
     ]);
-    reg.setFrozenRows(1);
-    reg.autoResizeColumns(1, 11);
+    records.setFrozenRows(1);
+    records.autoResizeColumns(1, 11);
   }
 
   SpreadsheetApp.getUi().alert(
-    'Fulls creats correctament.\n\n' +
-    'Recorda: afegeix els emails dels professors autoritzats a la pestanya "Professors" ' +
-    'abans de compartir l\'enllaç amb tothom.\n\n' +
-    'Ja pots anar a Implementar > Nova implementació.'
+    'Sheets created successfully.\n\n' +
+    'Remember: add the emails of authorized teachers to the "Teachers" tab ' +
+    'before sharing the link with everyone.\n\n' +
+    'You can now go to Deploy > New deployment.'
   );
 }
 
 /**
- * NOMÉS PER FER PROVES DE RENDIMENT: substitueix el contingut de la pestanya
- * "Alumnes" per dades falses (uns quants centenars d'alumnes repartits en
- * moltes classes), per comprovar que la web va igual de ràpida amb un
- * col·legi sencer que amb 3 alumnes d'exemple.
+ * FOR PERFORMANCE TESTING ONLY: replaces the content of the "Students" tab
+ * with fake data (a few hundred students spread across many classes), to
+ * check that the web app is just as fast with a whole school as with 3
+ * example students.
  *
- * Executa-la manualment des de l'editor quan vulguis fer la prova, i
- * torna a executar setup() (o esborra la pestanya "Alumnes" a mà) per
- * tornar a les dades reals després.
+ * Run it manually from the editor when you want to test, and run setup()
+ * again (or clear the "Students" tab by hand) to go back to real data.
  */
-function generarAlumnesDeProva() {
-  const cursos = ['P3', 'P4', 'P5', '1r', '2n', '3r', '4t', '5è', '6è'];
-  const grups = ['A', 'B'];
-  const alumnesPerClasse = 25;
+function generateTestStudents() {
+  const grades = ['K3', 'K4', 'K5', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6'];
+  const groups = ['A', 'B'];
+  const studentsPerClass = 25;
 
-  const files = [];
-  cursos.forEach((curs) => {
-    grups.forEach((grup) => {
-      const classe = curs + grup;
-      for (let i = 1; i <= alumnesPerClasse; i++) {
-        files.push([classe, `Alumne ${classe}-${i}`]);
+  const rows = [];
+  grades.forEach((grade) => {
+    groups.forEach((group) => {
+      const className = grade + group;
+      for (let i = 1; i <= studentsPerClass; i++) {
+        rows.push([className, `Test Student ${className}-${i}`]);
       }
     });
   });
 
-  const sh = ss_().getSheetByName(SHEET_ALUMNES);
-  const filesActuals = Math.max(sh.getLastRow() - 1, 0);
-  if (filesActuals > 0) sh.getRange(2, 1, filesActuals, 2).clearContent();
-  sh.getRange(2, 1, files.length, 2).setValues(files);
+  const sh = spreadsheet_().getSheetByName(SHEET_STUDENTS);
+  const existingRows = Math.max(sh.getLastRow() - 1, 0);
+  if (existingRows > 0) sh.getRange(2, 1, existingRows, 2).clearContent();
+  sh.getRange(2, 1, rows.length, 2).setValues(rows);
 
   SpreadsheetApp.getUi().alert(
-    `Generats ${files.length} alumnes de prova en ${cursos.length * grups.length} classes.`
+    `Generated ${rows.length} test students across ${grades.length * groups.length} classes.`
   );
 }
 
 /**
- * NOMÉS PER FER PROVES: omple la pestanya "Registre" amb faltes i retards
- * aleatoris per a tots els alumnes, repartits en els últims `diesEnrere` dies
- * lectius (caps de setmana exclosos). Serveix per veure el Resum, els %, les
- * alertes i el cercador amb dades que semblin reals, sense haver de passar
- * llista dia a dia a mà.
+ * FOR TESTING ONLY: fills the "Records" tab with random absences and late
+ * arrivals for every student, spread across the last `daysBack` school days
+ * (weekends excluded). Useful for seeing the Summary, percentages, alerts
+ * and search box with realistic-looking data, without taking attendance
+ * day by day by hand.
  *
- * Substitueix TOT el contingut actual de "Registre". Executa-la manualment
- * des de l'editor. Per tornar a buit, esborra el contingut de "Registre" a mà.
+ * Replaces the ENTIRE current content of "Records". Run it manually from
+ * the editor. To go back to empty, clear the content of "Records" by hand.
  */
-function generarRegistreDeProva(diesEnrere) {
-  diesEnrere = diesEnrere || 60;
+function generateTestRecords(daysBack) {
+  daysBack = daysBack || 60;
 
-  const alSh = ss_().getSheetByName(SHEET_ALUMNES);
-  const alValues = alSh.getRange(2, 1, Math.max(alSh.getLastRow() - 1, 0), 2).getValues()
+  const studentsSheet = spreadsheet_().getSheetByName(SHEET_STUDENTS);
+  const studentRows = studentsSheet.getRange(2, 1, Math.max(studentsSheet.getLastRow() - 1, 0), 2).getValues()
     .filter((r) => r[0] && r[1]);
 
-  if (!alValues.length) {
-    SpreadsheetApp.getUi().alert('No hi ha alumnes a la pestanya "Alumnes". Genera\'ls primer amb generarAlumnesDeProva().');
+  if (!studentRows.length) {
+    SpreadsheetApp.getUi().alert('There are no students in the "Students" tab. Generate them first with generateTestStudents().');
     return;
   }
 
   const dates = [];
   const cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
-  while (dates.length < diesEnrere) {
-    const diaSetmana = cursor.getDay();
-    if (diaSetmana !== 0 && diaSetmana !== 6) {
+  while (dates.length < daysBack) {
+    const weekday = cursor.getDay();
+    if (weekday !== 0 && weekday !== 6) {
       dates.push(Utilities.formatDate(cursor, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
     }
     cursor.setDate(cursor.getDate() - 1);
@@ -246,301 +246,302 @@ function generarRegistreDeProva(diesEnrere) {
 
   let email;
   try {
-    email = Session.getActiveUser().getEmail() || 'prova';
+    email = Session.getActiveUser().getEmail() || 'test';
   } catch (e) {
-    email = 'prova';
+    email = 'test';
   }
-  const ara = new Date();
+  const now = new Date();
 
-  const files = [];
-  alValues.forEach(([classe, alumne]) => {
-    dates.forEach((data) => {
+  const rows = [];
+  studentRows.forEach(([className, student]) => {
+    dates.forEach((date) => {
       const rand = Math.random();
-      let mati = false, tarda = false, retardMati = false, retardTarda = false;
-      let justificadaMati = false, justificadaTarda = false;
+      let morning = false, afternoon = false, lateMorning = false, lateAfternoon = false;
+      let justifiedMorning = false, justifiedAfternoon = false;
 
       if (rand < 0.03) {
-        mati = true; tarda = true; // dia complet
+        morning = true; afternoon = true; // full day
       } else if (rand < 0.07) {
-        mati = true;
+        morning = true;
       } else if (rand < 0.09) {
-        tarda = true;
+        afternoon = true;
       } else if (rand < 0.12) {
-        retardMati = true;
+        lateMorning = true;
       } else if (rand < 0.13) {
-        retardTarda = true;
+        lateAfternoon = true;
       }
 
-      if (mati) justificadaMati = Math.random() < 0.5;
-      if (tarda) justificadaTarda = Math.random() < 0.5;
+      if (morning) justifiedMorning = Math.random() < 0.5;
+      if (afternoon) justifiedAfternoon = Math.random() < 0.5;
 
-      if (mati || tarda || retardMati || retardTarda) {
-        files.push([data, classe, alumne, mati, tarda, justificadaMati, justificadaTarda, retardMati, retardTarda, email, ara]);
+      if (morning || afternoon || lateMorning || lateAfternoon) {
+        rows.push([date, className, student, morning, afternoon, justifiedMorning, justifiedAfternoon, lateMorning, lateAfternoon, email, now]);
       }
     });
   });
 
-  const sh = ss_().getSheetByName(SHEET_REGISTRE);
-  const filesActuals = Math.max(sh.getLastRow() - 1, 0);
-  if (filesActuals > 0) sh.getRange(2, 1, filesActuals, 11).clearContent();
-  if (files.length) {
-    sh.getRange(2, 1, files.length, 11).setValues(files);
+  const sh = spreadsheet_().getSheetByName(SHEET_RECORDS);
+  const existingRows = Math.max(sh.getLastRow() - 1, 0);
+  if (existingRows > 0) sh.getRange(2, 1, existingRows, 11).clearContent();
+  if (rows.length) {
+    sh.getRange(2, 1, rows.length, 11).setValues(rows);
   }
 
   SpreadsheetApp.getUi().alert(
-    `Generats ${files.length} registres de falta/retard de prova, ` +
-    `repartits en ${dates.length} dies lectius (caps de setmana exclosos) i ${alValues.length} alumnes.`
+    `Generated ${rows.length} test absence/late-arrival records, ` +
+    `spread across ${dates.length} school days (weekends excluded) and ${studentRows.length} students.`
   );
 }
 
 /**
- * Promoció de curs de final d'any: mou cada alumne de la seva classe actual
- * a la següent, seguint el mapa que hi hagi escrit a la pestanya "Promocio"
- * (Classe actual -> Classe nova; deixa "Classe nova" buida per als cursos
- * que es graduen i surten del centre, com ara 6è).
+ * End-of-year grade promotion: moves every student from their current class
+ * to the next one, following the map written in the "Promotion" tab
+ * (Current class -> New class; leave "New class" blank for grades that
+ * graduate and leave the school, e.g. Grade 6).
  *
- * Els alumnes marcats amb la casella "No promocionar (repetidor)" a la
- * pestanya "Alumnes" es queden a la mateixa classe i no es toquen.
+ * Students with the "Do not promote (repeating)" box checked in the
+ * "Students" tab stay in the same class and are left untouched.
  *
- * Executa-la manualment UN SOL COP quan comenci el curs nou. Abans de fer-ho:
- *  1. Revisa/omple bé la pestanya "Promocio" amb els noms reals de les teves classes.
- *  2. Marca la casella de repetidors als alumnes que calgui.
- *  3. Si vols conservar l'històric de faltes de l'any que acaba, copia el
- *     contingut de "Registre" a una altra pestanya (ex. "Registre 2025-26")
- *     abans d'esborrar-lo, i actualitza TOTAL_DIES_LECTIUS a "Config" pel curs nou.
+ * Run it manually ONCE when the new school year starts. Before doing so:
+ *  1. Check/fill in the "Promotion" tab with your real class names.
+ *  2. Check the repeating box for any students who need it.
+ *  3. If you want to keep the outgoing year's attendance history, copy the
+ *     content of "Records" to another tab (e.g. "Records 2025-26") before
+ *     clearing it, and update TOTAL_SCHOOL_DAYS in "Config" for the new year.
  */
-function promocionarCurs() {
-  const promoSh = ss_().getSheetByName('Promocio');
-  if (!promoSh) {
-    SpreadsheetApp.getUi().alert('No trobo la pestanya "Promocio". Executa setup() primer.');
+function promoteToNextGrade() {
+  const promotionSheet = spreadsheet_().getSheetByName(SHEET_PROMOTION);
+  if (!promotionSheet) {
+    SpreadsheetApp.getUi().alert('Can\'t find the "Promotion" tab. Run setup() first.');
     return;
   }
 
-  const mapa = {};
-  promoSh.getRange(2, 1, Math.max(promoSh.getLastRow() - 1, 0), 2).getValues().forEach(([actual, nova]) => {
-    if (actual) mapa[String(actual).trim()] = String(nova || '').trim();
+  const mapping = {};
+  promotionSheet.getRange(2, 1, Math.max(promotionSheet.getLastRow() - 1, 0), 2).getValues().forEach(([current, next]) => {
+    if (current) mapping[String(current).trim()] = String(next || '').trim();
   });
 
-  const alSh = ss_().getSheetByName(SHEET_ALUMNES);
-  const numFiles = Math.max(alSh.getLastRow() - 1, 0);
-  if (!numFiles) {
-    SpreadsheetApp.getUi().alert('No hi ha alumnes a la pestanya "Alumnes".');
+  const studentsSheet = spreadsheet_().getSheetByName(SHEET_STUDENTS);
+  const numRows = Math.max(studentsSheet.getLastRow() - 1, 0);
+  if (!numRows) {
+    SpreadsheetApp.getUi().alert('There are no students in the "Students" tab.');
     return;
   }
 
-  const dades = alSh.getRange(2, 1, numFiles, 3).getValues();
-  let promocionats = 0;
-  let repetidors = 0;
-  let graduats = 0;
-  let senseMapa = 0;
-  const filesPerEliminar = [];
+  const data = studentsSheet.getRange(2, 1, numRows, 3).getValues();
+  let promoted = 0;
+  let repeating = 0;
+  let graduated = 0;
+  let unmapped = 0;
+  const rowsToDelete = [];
 
-  for (let i = 0; i < dades.length; i++) {
-    const [classe, alumne, noPromocionar] = dades[i];
-    if (!alumne) continue;
+  for (let i = 0; i < data.length; i++) {
+    const [className, student, doNotPromote] = data[i];
+    if (!student) continue;
 
-    if (noPromocionar === true) {
-      repetidors++;
+    if (doNotPromote === true) {
+      repeating++;
       continue;
     }
 
-    if (!(classe in mapa)) {
-      senseMapa++;
+    if (!(className in mapping)) {
+      unmapped++;
       continue;
     }
 
-    const classeNova = mapa[classe];
-    if (!classeNova) {
-      filesPerEliminar.push(i + 2); // es gradua / surt del centre
-      graduats++;
+    const newClassName = mapping[className];
+    if (!newClassName) {
+      rowsToDelete.push(i + 2); // graduating / leaving the school
+      graduated++;
     } else {
-      alSh.getRange(i + 2, 1).setValue(classeNova);
-      promocionats++;
+      studentsSheet.getRange(i + 2, 1).setValue(newClassName);
+      promoted++;
     }
   }
 
-  filesPerEliminar
+  rowsToDelete
     .sort((a, b) => b - a)
-    .forEach((fila) => alSh.deleteRow(fila));
+    .forEach((row) => studentsSheet.deleteRow(row));
 
-  // Reinicia les caselles de "repetidor" de cara al curs vinent.
-  const numFilesFinal = Math.max(alSh.getLastRow() - 1, 0);
-  if (numFilesFinal) {
-    alSh.getRange(2, 3, numFilesFinal, 1).setValue(false);
+  // Reset the "repeating" checkboxes for next year.
+  const finalRowCount = Math.max(studentsSheet.getLastRow() - 1, 0);
+  if (finalRowCount) {
+    studentsSheet.getRange(2, 3, finalRowCount, 1).setValue(false);
   }
 
   SpreadsheetApp.getUi().alert(
-    'Promoció completada:\n\n' +
-    `• ${promocionats} alumnes promocionats de classe\n` +
-    `• ${repetidors} repetidors mantinguts a la mateixa classe\n` +
-    `• ${graduats} alumnes graduats/eliminats (classe nova buida al mapa)\n` +
-    (senseMapa ? `• ⚠️ ${senseMapa} alumnes amb una classe que no és a la pestanya "Promocio" (no s'han tocat)\n` : '') +
-    '\nRevisa la pestanya "Alumnes" per confirmar que tot ha quedat bé.'
+    'Promotion complete:\n\n' +
+    `• ${promoted} students promoted to a new class\n` +
+    `• ${repeating} repeating students kept in the same class\n` +
+    `• ${graduated} students graduated/removed (blank new class in the mapping)\n` +
+    (unmapped ? `• ⚠️ ${unmapped} students had a class not found in the "Promotion" tab (left untouched)\n` : '') +
+    '\nCheck the "Students" tab to confirm everything looks right.'
   );
 }
 
 /**
- * NOMÉS PER MESURAR RENDIMENT: crida getResum() (amb totes les classes, el cas
- * més pesat) i mostra quant triga en mil·lisegons. Útil per comprovar si val
- * la pena optimitzar-lo amb el volum de dades que tingueu.
+ * FOR PERFORMANCE TESTING ONLY: calls getSummary() (with all classes, the
+ * heaviest case) and shows how long it took in milliseconds. Useful to check
+ * whether it's worth optimizing further for your actual data volume.
  */
-function mesurarRendiment() {
-  const inici = new Date().getTime();
-  const resultat = getResum('');
-  const fi = new Date().getTime();
+function measurePerformance() {
+  const start = new Date().getTime();
+  const result = getSummary('');
+  const end = new Date().getTime();
 
   SpreadsheetApp.getUi().alert(
-    `getResum() ha trigat ${fi - inici} ms\n` +
-    `(${resultat.length} alumnes processats)`
+    `getSummary() took ${end - start} ms\n` +
+    `(${result.length} students processed)`
   );
 }
 
 function getConfig_() {
-  const sh = ss_().getSheetByName(SHEET_CONFIG);
+  const sh = spreadsheet_().getSheetByName(SHEET_CONFIG);
   const values = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), 2).getValues();
-  const cfg = {};
-  values.forEach(([clau, valor]) => {
-    if (clau) cfg[clau] = valor;
+  const config = {};
+  values.forEach(([key, value]) => {
+    if (key) config[key] = value;
   });
-  return cfg;
+  return config;
 }
 
 function getClasses() {
-  const sh = ss_().getSheetByName(SHEET_ALUMNES);
+  const sh = spreadsheet_().getSheetByName(SHEET_STUDENTS);
   const values = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), 1).getValues();
   const set = new Set(values.map((r) => r[0]).filter(String));
   return Array.from(set).sort();
 }
 
-function clauDia_(data, alumne) {
-  return data + '||' + alumne;
+function dayKey_(date, student) {
+  return date + '||' + student;
 }
 
-function nomDiaSetmana_(dataISO) {
-  const dies = ['Diumenge', 'Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte'];
-  const parts = dataISO.split('-').map(Number);
+function weekdayInfo_(isoDate) {
+  const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const parts = isoDate.split('-').map(Number);
   const d = new Date(parts[0], parts[1] - 1, parts[2]);
-  return { nom: dies[d.getDay()], capDeSetmana: d.getDay() === 0 || d.getDay() === 6 };
+  return { name: names[d.getDay()], isWeekend: d.getDay() === 0 || d.getDay() === 6 };
 }
 
 /**
- * Retorna tots els alumnes d'una classe amb les marques que ja existeixin per a `data`
- * (si encara no s'ha passat llista aquell dia, totes les marques surten a false).
+ * Returns every student in a class along with whatever marks already exist
+ * for `date` (if attendance hasn't been taken yet that day, all marks come
+ * back false).
  */
-function getGraella(classe, data) {
-  const alSh = ss_().getSheetByName(SHEET_ALUMNES);
-  const alValues = alSh.getRange(2, 1, Math.max(alSh.getLastRow() - 1, 0), 2).getValues();
-  const alumnes = alValues
-    .filter((r) => r[0] === classe && r[1])
+function getAttendanceGrid(className, date) {
+  const studentsSheet = spreadsheet_().getSheetByName(SHEET_STUDENTS);
+  const studentValues = studentsSheet.getRange(2, 1, Math.max(studentsSheet.getLastRow() - 1, 0), 2).getValues();
+  const students = studentValues
+    .filter((r) => r[0] === className && r[1])
     .map((r) => r[1])
-    .sort((a, b) => a.localeCompare(b, 'ca'));
+    .sort((a, b) => a.localeCompare(b, 'en'));
 
-  const marques = {};
-  const regSh = ss_().getSheetByName(SHEET_REGISTRE);
-  const lastRow = regSh.getLastRow();
+  const marks = {};
+  const recordsSheet = spreadsheet_().getSheetByName(SHEET_RECORDS);
+  const lastRow = recordsSheet.getLastRow();
   if (lastRow >= 2) {
-    const regValues = regSh.getRange(2, 1, lastRow - 1, 9).getValues();
-    regValues.forEach(([rData, rClasse, rAlumne, mati, tarda, justificadaMati, justificadaTarda, retardMati, retardTarda]) => {
-      if (rClasse === classe && formatDataISO_(rData) === data) {
-        marques[rAlumne] = {
-          mati: mati === true,
-          tarda: tarda === true,
-          justificadaMati: justificadaMati === true,
-          justificadaTarda: justificadaTarda === true,
-          retardMati: retardMati === true,
-          retardTarda: retardTarda === true,
+    const recordValues = recordsSheet.getRange(2, 1, lastRow - 1, 9).getValues();
+    recordValues.forEach(([rDate, rClass, rStudent, morning, afternoon, justifiedMorning, justifiedAfternoon, lateMorning, lateAfternoon]) => {
+      if (rClass === className && formatDateISO_(rDate) === date) {
+        marks[rStudent] = {
+          morning: morning === true,
+          afternoon: afternoon === true,
+          justifiedMorning: justifiedMorning === true,
+          justifiedAfternoon: justifiedAfternoon === true,
+          lateMorning: lateMorning === true,
+          lateAfternoon: lateAfternoon === true,
         };
       }
     });
   }
 
-  const diaInfo = nomDiaSetmana_(data);
+  const dayInfo = weekdayInfo_(date);
 
   return {
-    diaSetmana: diaInfo.nom,
-    capDeSetmana: diaInfo.capDeSetmana,
-    alumnes: alumnes.map((alumne) => {
-      const m = marques[alumne] || { mati: false, tarda: false, justificadaMati: false, justificadaTarda: false, retardMati: false, retardTarda: false };
+    weekday: dayInfo.name,
+    isWeekend: dayInfo.isWeekend,
+    students: students.map((student) => {
+      const m = marks[student] || { morning: false, afternoon: false, justifiedMorning: false, justifiedAfternoon: false, lateMorning: false, lateAfternoon: false };
       return {
-        alumne,
-        mati: m.mati,
-        tarda: m.tarda,
-        justificadaMati: m.justificadaMati,
-        justificadaTarda: m.justificadaTarda,
-        retardMati: m.retardMati,
-        retardTarda: m.retardTarda,
+        student,
+        morning: m.morning,
+        afternoon: m.afternoon,
+        justifiedMorning: m.justifiedMorning,
+        justifiedAfternoon: m.justifiedAfternoon,
+        lateMorning: m.lateMorning,
+        lateAfternoon: m.lateAfternoon,
       };
     }),
   };
 }
 
 /**
- * files = [{ alumne, mati, tarda, justificadaMati, justificadaTarda, retardMati, retardTarda }, ...]
- * per a una classe i data concretes. Actualitza, crea o esborra la fila corresponent a cada alumne segons calgui.
+ * rows = [{ student, morning, afternoon, justifiedMorning, justifiedAfternoon, lateMorning, lateAfternoon }, ...]
+ * for a specific class and date. Updates, creates or deletes the matching row for each student as needed.
  */
-function guardarGraella(classe, data, files) {
-  if (!classe || !data || !files) throw new Error('Falten dades.');
+function saveAttendanceGrid(className, date, rows) {
+  if (!className || !date || !rows) throw new Error('Missing data.');
 
-  const sh = ss_().getSheetByName(SHEET_REGISTRE);
+  const sh = spreadsheet_().getSheetByName(SHEET_RECORDS);
   const lastRow = sh.getLastRow();
   const numRows = Math.max(lastRow - 1, 0);
   const values = numRows ? sh.getRange(2, 1, numRows, 11).getValues() : [];
 
-  const indexPerClau = {};
+  const rowIndexByKey = {};
   values.forEach((row, i) => {
-    if (row[1] === classe && formatDataISO_(row[0]) === data) {
-      indexPerClau[clauDia_(data, row[2])] = i + 2; // fila real al full
+    if (row[1] === className && formatDateISO_(row[0]) === date) {
+      rowIndexByKey[dayKey_(date, row[2])] = i + 2; // actual row on the sheet
     }
   });
 
   let email;
   try {
-    email = Session.getActiveUser().getEmail() || 'desconegut';
+    email = Session.getActiveUser().getEmail() || 'unknown';
   } catch (e) {
-    email = 'desconegut';
+    email = 'unknown';
   }
-  const ara = new Date();
+  const now = new Date();
 
-  const filesPerEsborrar = [];
+  const rowsToDelete = [];
 
-  files.forEach((f) => {
-    const teAlgunaMarca = f.mati || f.tarda || f.retardMati || f.retardTarda;
-    const clau = clauDia_(data, f.alumne);
-    const filaExistent = indexPerClau[clau];
+  rows.forEach((r) => {
+    const hasAnyMark = r.morning || r.afternoon || r.lateMorning || r.lateAfternoon;
+    const key = dayKey_(date, r.student);
+    const existingRow = rowIndexByKey[key];
 
-    if (!teAlgunaMarca) {
-      if (filaExistent) filesPerEsborrar.push(filaExistent);
+    if (!hasAnyMark) {
+      if (existingRow) rowsToDelete.push(existingRow);
       return;
     }
 
-    const novaFila = [
-      data, classe, f.alumne,
-      !!f.mati, !!f.tarda,
-      !!f.justificadaMati, !!f.justificadaTarda,
-      !!f.retardMati, !!f.retardTarda,
-      email, ara,
+    const newRow = [
+      date, className, r.student,
+      !!r.morning, !!r.afternoon,
+      !!r.justifiedMorning, !!r.justifiedAfternoon,
+      !!r.lateMorning, !!r.lateAfternoon,
+      email, now,
     ];
 
-    if (filaExistent) {
-      sh.getRange(filaExistent, 1, 1, 11).setValues([novaFila]);
+    if (existingRow) {
+      sh.getRange(existingRow, 1, 1, 11).setValues([newRow]);
     } else {
-      sh.appendRow(novaFila);
+      sh.appendRow(newRow);
     }
   });
 
-  filesPerEsborrar
+  rowsToDelete
     .sort((a, b) => b - a)
-    .forEach((fila) => sh.deleteRow(fila));
+    .forEach((row) => sh.deleteRow(row));
 
-  incrementarVersioRegistre_();
+  incrementRecordsVersion_();
 
   return true;
 }
 
 /**
- * El cache d'Apps Script només accepta ~100KB per clau. Amb molts alumnes,
- * el JSON del Resum pot superar-ho, així que el comprimim (gzip + base64)
- * abans de guardar-lo, i el desfem en llegir-lo.
+ * Apps Script's cache only accepts ~100KB per key. With many students, the
+ * Summary's JSON can exceed that, so we compress it (gzip + base64) before
+ * storing it, and reverse that when reading it back.
  */
 function cacheGet_(cache, key) {
   const base64 = cache.get(key);
@@ -559,129 +560,130 @@ function cachePut_(cache, key, str, ttlSec) {
     const base64 = Utilities.base64Encode(gzipBlob.getBytes());
     if (base64.length <= 100000) cache.put(key, base64, ttlSec);
   } catch (e) {
-    // Si tot i comprimir-ho segueix sent massa gran, simplement no es guarda en caché.
+    // If it's still too large even after compression, we just don't cache it.
   }
 }
 
-function getResum(classeFiltre) {
+function getSummary(classFilter) {
   const cache = CacheService.getScriptCache();
-  const cacheKey = 'resum_v' + versioRegistre_() + '_' + (classeFiltre || '__totes__');
-  const cacheValue = cacheGet_(cache, cacheKey);
-  if (cacheValue) return JSON.parse(cacheValue);
+  const cacheKey = 'summary_v' + recordsVersion_() + '_' + (classFilter || '__all__');
+  const cachedValue = cacheGet_(cache, cacheKey);
+  if (cachedValue) return JSON.parse(cachedValue);
 
-  const cfg = getConfig_();
-  const pesMati = Number(cfg.PES_MATI) || 0;
-  const pesTarda = Number(cfg.PES_TARDA) || 0;
-  const totalDies = Number(cfg.TOTAL_DIES_LECTIUS) || 0;
-  const umbral = Number(cfg.UMBRAL_ALERTA_PCT) || 10;
+  const config = getConfig_();
+  const weightMorning = Number(config.WEIGHT_MORNING) || 0;
+  const weightAfternoon = Number(config.WEIGHT_AFTERNOON) || 0;
+  const totalSchoolDays = Number(config.TOTAL_SCHOOL_DAYS) || 0;
+  const threshold = Number(config.ALERT_THRESHOLD_PCT) || 10;
 
-  const alSh = ss_().getSheetByName(SHEET_ALUMNES);
-  const alValues = alSh.getRange(2, 1, Math.max(alSh.getLastRow() - 1, 0), 2).getValues();
+  const studentsSheet = spreadsheet_().getSheetByName(SHEET_STUDENTS);
+  const studentValues = studentsSheet.getRange(2, 1, Math.max(studentsSheet.getLastRow() - 1, 0), 2).getValues();
 
-  const buit_ = () => ({ diesFalta: 0, diesJustificats: 0, retardsMati: 0, retardsTarda: 0, perDiaSetmana: [0, 0, 0, 0, 0, 0, 0] });
+  const emptyStats_ = () => ({ unjustifiedDays: 0, justifiedDays: 0, lateMornings: 0, lateAfternoons: 0, byWeekday: [0, 0, 0, 0, 0, 0, 0] });
   const stats = {};
-  const clau = (classe, alumne) => classe + ' ||| ' + alumne;
+  const key_ = (className, student) => className + ' ||| ' + student;
 
-  alValues.forEach(([classe, alumne]) => {
-    if (!alumne) return;
-    if (classeFiltre && classe !== classeFiltre) return;
-    stats[clau(classe, alumne)] = Object.assign({ classe, alumne }, buit_());
+  studentValues.forEach(([className, student]) => {
+    if (!student) return;
+    if (classFilter && className !== classFilter) return;
+    stats[key_(className, student)] = Object.assign({ className, student }, emptyStats_());
   });
 
-  const regSh = ss_().getSheetByName(SHEET_REGISTRE);
-  const lastRow = regSh.getLastRow();
+  const recordsSheet = spreadsheet_().getSheetByName(SHEET_RECORDS);
+  const lastRow = recordsSheet.getLastRow();
   if (lastRow >= 2) {
-    const regValues = regSh.getRange(2, 1, lastRow - 1, 9).getValues();
-    regValues.forEach(([data, classe, alumne, mati, tarda, justificadaMati, justificadaTarda, retardMati, retardTarda]) => {
-      if (!alumne) return;
-      if (classeFiltre && classe !== classeFiltre) return;
+    const recordValues = recordsSheet.getRange(2, 1, lastRow - 1, 9).getValues();
+    recordValues.forEach(([date, className, student, morning, afternoon, justifiedMorning, justifiedAfternoon, lateMorning, lateAfternoon]) => {
+      if (!student) return;
+      if (classFilter && className !== classFilter) return;
 
-      const k = clau(classe, alumne);
+      const k = key_(className, student);
       if (!stats[k]) {
-        stats[k] = Object.assign({ classe, alumne }, buit_());
+        stats[k] = Object.assign({ className, student }, emptyStats_());
       }
 
-      // Si per algun motiu (ex. edició manual de la Sheet) una franja té marcada
-      // alhora Falta i Retard, dona prioritat a la Falta i ignora el Retard,
-      // per no comptar dues vegades la mateixa incidència.
-      if (retardMati === true && mati !== true) stats[k].retardsMati += 1;
-      if (retardTarda === true && tarda !== true) stats[k].retardsTarda += 1;
+      // If for some reason (e.g. a manual Sheet edit) a half-day has both an
+      // absence and a late arrival marked, the absence takes priority and the
+      // late arrival is ignored, so the same incident isn't counted twice.
+      if (lateMorning === true && morning !== true) stats[k].lateMornings += 1;
+      if (lateAfternoon === true && afternoon !== true) stats[k].lateAfternoons += 1;
 
-      if (mati === true) {
-        if (justificadaMati === true) stats[k].diesJustificats += pesMati;
-        else stats[k].diesFalta += pesMati;
+      if (morning === true) {
+        if (justifiedMorning === true) stats[k].justifiedDays += weightMorning;
+        else stats[k].unjustifiedDays += weightMorning;
       }
-      if (tarda === true) {
-        if (justificadaTarda === true) stats[k].diesJustificats += pesTarda;
-        else stats[k].diesFalta += pesTarda;
+      if (afternoon === true) {
+        if (justifiedAfternoon === true) stats[k].justifiedDays += weightAfternoon;
+        else stats[k].unjustifiedDays += weightAfternoon;
       }
 
-      if (mati === true || tarda === true) {
-        const diaSetm = new Date(formatDataISO_(data)).getUTCDay();
-        stats[k].perDiaSetmana[diaSetm] += 1;
+      if (morning === true || afternoon === true) {
+        const weekday = new Date(formatDateISO_(date)).getUTCDay();
+        stats[k].byWeekday[weekday] += 1;
       }
     });
   }
 
-  const NOMS_DIA = ['Diumenge', 'Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte'];
+  const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  const resultat = Object.values(stats)
+  const result = Object.values(stats)
     .map((s) => {
-      const total = s.diesFalta + s.diesJustificats;
-      const pctNoJustificat = totalDies ? (s.diesFalta / totalDies) * 100 : 0;
-      const pctJustificat = totalDies ? (s.diesJustificats / totalDies) * 100 : 0;
-      const pctTotal = pctNoJustificat + pctJustificat;
+      const total = s.unjustifiedDays + s.justifiedDays;
+      const unjustifiedPct = totalSchoolDays ? (s.unjustifiedDays / totalSchoolDays) * 100 : 0;
+      const justifiedPct = totalSchoolDays ? (s.justifiedDays / totalSchoolDays) * 100 : 0;
+      const totalPct = unjustifiedPct + justifiedPct;
 
-      // Ràtio de justificació: quin % de les SEVES pròpies faltes estan justificades
-      // (diferent de percentatgeJustificat, que és sobre el total de dies del curs).
-      const ratioJustificacio = total > 0 ? arrodonir_((s.diesJustificats / total) * 100) : null;
+      // Justification rate: what % of THEIR OWN absences are justified
+      // (different from justifiedPct, which is over the whole school year).
+      const justificationRate = total > 0 ? round_((s.justifiedDays / total) * 100) : null;
 
-      // Desglossament de tots els dies amb alguna falta, ordenats de més a menys freqüent.
-      const diaMesFrequent = s.perDiaSetmana
-        .map((n, i) => ({ nom: NOMS_DIA[i], n }))
+      // Breakdown of every weekday with at least one absence, sorted from most to least frequent.
+      const mostFrequentDay = s.byWeekday
+        .map((n, i) => ({ name: WEEKDAY_NAMES[i], n }))
         .filter((d) => d.n > 0)
         .sort((a, b) => b.n - a.n)
-        .map((d) => `${d.nom} (${d.n})`)
+        .map((d) => `${d.name} (${d.n})`)
         .join(', ') || '—';
 
-      // Escala progressiva en 3 esglaons, relativa al llindar d'alerta configurat:
-      // per sota de la meitat del llindar = verd, entre la meitat i el llindar = ambre,
-      // a partir del llindar = vermell. Així el canvi de color comença abans del límit exacte.
-      let nivell = 'ok';
-      if (pctTotal >= umbral) nivell = 'alerta';
-      else if (pctTotal >= umbral / 2) nivell = 'advertencia';
+      // Progressive 3-step scale, relative to the configured alert threshold:
+      // below half the threshold = green, between half and the threshold = amber,
+      // at or above the threshold = red. This way the color change starts
+      // before the exact limit.
+      let level = 'ok';
+      if (totalPct >= threshold) level = 'alert';
+      else if (totalPct >= threshold / 2) level = 'warning';
 
       return {
-        classe: s.classe,
-        alumne: s.alumne,
-        diesFaltaNoJustificades: arrodonir_(s.diesFalta),
-        diesJustificats: arrodonir_(s.diesJustificats),
-        totalDies: arrodonir_(total),
-        percentatgeNoJustificat: arrodonir_(pctNoJustificat),
-        percentatgeJustificat: arrodonir_(pctJustificat),
-        percentatge: arrodonir_(pctTotal),
-        ratioJustificacio,
-        alerta: pctTotal >= umbral,
-        nivell,
-        retardsMati: s.retardsMati,
-        retardsTarda: s.retardsTarda,
-        diaMesFrequent,
+        className: s.className,
+        student: s.student,
+        unjustifiedDays: round_(s.unjustifiedDays),
+        justifiedDays: round_(s.justifiedDays),
+        totalDays: round_(total),
+        unjustifiedPct: round_(unjustifiedPct),
+        justifiedPct: round_(justifiedPct),
+        totalPct: round_(totalPct),
+        justificationRate,
+        isAlert: totalPct >= threshold,
+        level,
+        lateMornings: s.lateMornings,
+        lateAfternoons: s.lateAfternoons,
+        mostFrequentDay,
       };
     })
-    .sort((a, b) => b.percentatge - a.percentatge);
+    .sort((a, b) => b.totalPct - a.totalPct);
 
-  cachePut_(cache, cacheKey, JSON.stringify(resultat), 120); // 2 minuts
+  cachePut_(cache, cacheKey, JSON.stringify(result), 120); // 2 minutes
 
-  return resultat;
+  return result;
 }
 
-function formatDataISO_(d) {
+function formatDateISO_(d) {
   if (Object.prototype.toString.call(d) === '[object Date]') {
     return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   return d;
 }
 
-function arrodonir_(n) {
+function round_(n) {
   return Math.round(n * 100) / 100;
 }
