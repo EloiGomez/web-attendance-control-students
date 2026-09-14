@@ -1,0 +1,33 @@
+# Control d'Assistència
+
+A lightweight school attendance tracker built with **Google Apps Script**, created to replace a slow, unwieldy multi-tab Excel spreadsheet used by an entire primary school to log daily student absences.
+
+## The problem
+
+The original workflow was a single Excel file with one enormous grid per class (one row per student, one column per school day of the year — roughly 240 rows × 390 columns per class), duplicated across dozens of tabs for the whole school. Teachers had to type single-letter codes into cells by hand, the file took a long time to open and edit, and there was no automatic way to see a student's absence percentage for the year.
+
+## The solution
+
+A small web app served directly from Google Apps Script, backed by a Google Sheet used purely as a data store (never opened directly by teachers):
+
+- **Take attendance by class and day**: pick a class and a date, see every student in a checkbox grid (morning / afternoon / justified / late-arrival), and save the whole day at once.
+- **Live absence summary**: automatic attendance percentage per student (weighted — a missed morning counts differently than a missed afternoon, matching the school's real timetable), split by justified/unjustified absence, with a progressive color-coded alert level, a weekday-pattern breakdown, a search box, and sortable columns.
+- **Access control**: restricted to an explicit allow-list of staff emails, checked server-side on every request — not just an obscure link.
+- **Admin tooling**: a one-click end-of-year "promote all classes" tool (with an editable class-mapping sheet and a repeater flag per student), plus synthetic test-data generators for load-testing with hundreds of students.
+- **Performance**: the backend batches all spreadsheet reads, reuses a single `Spreadsheet` handle per execution instead of re-fetching it repeatedly, and caches the computed summary (gzip-compressed to fit Apps Script's cache size limit) so repeat views are near-instant until the underlying data actually changes.
+- Automatic dark mode (`prefers-color-scheme`), a mobile-friendly layout with sticky headers/columns, and no external dependencies — plain HTML/CSS/JS served through `HtmlService`.
+
+## Stack
+
+- **Backend**: Google Apps Script (JavaScript, V8 runtime) — `SpreadsheetApp`, `HtmlService`, `CacheService`, `PropertiesService`.
+- **Frontend**: vanilla HTML/CSS/JS, no frameworks or build step — communicates with the backend via `google.script.run`.
+- **Data store**: a Google Sheet, used as a simple structured database rather than a UI.
+
+## Status
+
+Functional prototype, tested with synthetic data (hundreds of students, thousands of attendance records). Contains no real student data — the `Alumnes` sheet ships with example names only.
+
+## Files
+
+- [`Code.gs`](Code.gs) — server-side logic (routing, access control, data access, business logic, admin tools).
+- [`Index.html`](Index.html) — the single-page frontend.

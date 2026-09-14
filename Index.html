@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    :root {
+      --blue: #1a73e8;
+      --blue-dark: #174ea6;
+      --blue-bg: #e8f0fe;
+      --amber: #b06000;
+      --amber-bg: #fef3e3;
+      --green: #188038;
+      --green-bg: #e6f4ea;
+      --purple: #8430ce;
+      --purple-bg: #f3e8fd;
+      --red: #d93025;
+      --red-bg: #fce8e6;
+      --gray-bg: #f4f6f8;
+      --gray-border: #dadce0;
+      --text: #202124;
+      --text-light: #5f6368;
+      --surface: #ffffff;
+      --surface-alt: #fafbfc;
+      --hover: #f8f9fa;
+      --disabled: #9aa0a6;
+      --on-accent: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --blue: #8ab4f8;
+        --blue-dark: #aecbfa;
+        --blue-bg: #1f2a3d;
+        --amber: #fdd663;
+        --amber-bg: #3a2f14;
+        --green: #81c995;
+        --green-bg: #1c3324;
+        --purple: #d2b4fc;
+        --purple-bg: #2f2440;
+        --red: #f28b82;
+        --red-bg: #3c2321;
+        --gray-bg: #202124;
+        --gray-border: #3c4043;
+        --text: #e8eaed;
+        --text-light: #9aa0a6;
+        --surface: #292a2d;
+        --surface-alt: #202124;
+        --hover: #323236;
+        --disabled: #5f6368;
+        --on-accent: #202124;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      background: var(--gray-bg);
+      color: var(--text);
+      margin: 0;
+      padding: 16px;
+    }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    h2 { font-size: 16px; margin: 0 0 12px; }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      border-bottom: 2px solid var(--gray-border);
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 10px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      color: var(--text-light);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+    .tab-btn.active {
+      color: var(--blue);
+      border-bottom-color: var(--blue);
+      font-weight: 600;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-light);
+      margin: 0 0 4px;
+    }
+    select, input[type="date"], input[type="search"] {
+      padding: 8px;
+      font-size: 14px;
+      border: 1px solid var(--gray-border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      min-width: 180px;
+    }
+    input[type="search"] { min-width: 240px; }
+    .filter-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-end;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .dia-info {
+      font-size: 13px;
+      color: var(--text-light);
+      padding: 8px 0;
+    }
+    .dia-info.cap-setmana { color: var(--amber); font-weight: 600; }
+    button.primary {
+      padding: 10px 20px;
+      background: var(--blue);
+      color: var(--on-accent);
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button.primary:disabled { background: var(--disabled); cursor: not-allowed; }
+    button.primary:hover:not(:disabled) { background: var(--blue-dark); }
+    .msg {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      display: none;
+    }
+    .msg.ok { display: block; background: var(--green-bg); color: var(--green); }
+    .msg.err { display: block; background: var(--red-bg); color: var(--red); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      background: var(--surface);
+      color: var(--text);
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--gray-border);
+      white-space: nowrap;
+    }
+    th {
+      color: var(--text-light);
+      font-weight: 600;
+      background: var(--surface-alt);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .02em;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      box-shadow: 0 1px 0 var(--gray-border);
+    }
+    th.center, td.center { text-align: center; }
+    th.col-mati, td.col-mati { background: var(--blue-bg); }
+    th.col-tarda, td.col-tarda { background: var(--amber-bg); }
+    th.col-justificada, td.col-justificada { background: var(--green-bg); }
+    th.col-retard, td.col-retard { background: var(--purple-bg); }
+    tr:hover td:not(.col-mati):not(.col-tarda):not(.col-justificada):not(.col-retard) { background: var(--hover); }
+    th:first-child, td:first-child {
+      position: sticky;
+      left: 0;
+      background: var(--surface);
+      box-shadow: 1px 0 0 var(--gray-border);
+      z-index: 1;
+    }
+    th:first-child { z-index: 3; }
+    #taula-resum.oculta-classe .col-classe { display: none; }
+    #taula-resum th[data-key] { cursor: pointer; user-select: none; }
+    #taula-resum th[data-key]:hover { color: var(--text); }
+    #taula-resum th[data-key] .fletxa { margin-left: 4px; opacity: .5; }
+    #taula-resum th[data-key].actiu .fletxa { opacity: 1; }
+    input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+    .chk-mati { accent-color: var(--blue); }
+    .chk-tarda { accent-color: var(--amber); }
+    .chk-justificada { accent-color: var(--green); }
+    .chk-retard-mati, .chk-retard-tarda { accent-color: var(--purple); }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge.ok { background: var(--green-bg); color: var(--green); }
+    .badge.advertencia { background: var(--amber-bg); color: var(--amber); }
+    .badge.alerta { background: var(--red-bg); color: var(--red); }
+    .empty-state {
+      color: var(--text-light);
+      font-size: 13px;
+      padding: 24px 0;
+      text-align: center;
+    }
+    .loader { color: var(--text-light); font-size: 13px; padding: 16px 0; }
+    .table-wrap {
+      overflow-x: auto;
+      overflow-y: auto;
+      max-height: 65vh;
+      background: var(--surface);
+      border: 1px solid var(--gray-border);
+      border-radius: 8px;
+    }
+    .table-wrap table { border: none; }
+    .footer-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 16px;
+    }
+    .llegenda {
+      font-size: 12px;
+      color: var(--text-light);
+    }
+    .sub {
+      font-size: 12px;
+      color: var(--text-light);
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>📋 Control d'Assistència</h1>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="llista">Passar llista</button>
+    <button class="tab-btn" data-tab="resum">Resum / % absentisme</button>
+  </div>
+
+  <!-- TAB: Passar llista -->
+  <div id="tab-llista" class="tab-panel active">
+    <div class="filter-row">
+      <div>
+        <label for="sel-classe">Classe</label>
+        <select id="sel-classe"><option>Carregant...</option></select>
+      </div>
+      <div>
+        <label for="inp-data">Dia</label>
+        <input type="date" id="inp-data">
+      </div>
+      <div class="dia-info" id="dia-info"></div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="taula-llista">
+        <thead>
+          <tr>
+            <th>Alumne/a</th>
+            <th class="center col-mati">Matí</th>
+            <th class="center col-justificada">Justificada<span class="sub">matí</span></th>
+            <th class="center col-retard">Retard<span class="sub">matí</span></th>
+            <th class="center col-tarda">Tarda</th>
+            <th class="center col-justificada">Justificada<span class="sub">tarda</span></th>
+            <th class="center col-retard">Retard<span class="sub">tarda</span></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty-state" id="empty-llista" style="display:none;">
+        No hi ha alumnes en aquesta classe. Afegeix-los a la pestanya "Alumnes" del full de càlcul.
+      </div>
+    </div>
+
+    <div class="footer-actions">
+      <span class="llegenda">Matí + Tarda marcats a la vegada = dia complet</span>
+      <button class="primary" id="btn-guardar">Guardar canvis</button>
+    </div>
+    <div class="msg" id="msg-guardar"></div>
+  </div>
+
+  <!-- TAB: Resum -->
+  <div id="tab-resum" class="tab-panel">
+    <div class="filter-row">
+      <div>
+        <label for="sel-classe-resum">Filtrar per classe</label>
+        <select id="sel-classe-resum"><option value="">Totes les classes</option></select>
+      </div>
+      <div>
+        <label for="cerca-resum">Cercar alumne</label>
+        <input type="search" id="cerca-resum" placeholder="Nom de l'alumne...">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="taula-resum">
+        <thead>
+          <tr>
+            <th data-key="alumne" data-tipus="text">Alumne</th>
+            <th class="col-classe" data-key="classe" data-tipus="text">Classe</th>
+            <th class="center col-justificada" data-key="diesJustificats" data-tipus="num">Dies just.</th>
+            <th class="center" data-key="diesFaltaNoJustificades" data-tipus="num">Dies no just.</th>
+            <th class="center col-justificada" data-key="percentatgeJustificat" data-tipus="num">% just.<span class="sub">del curs</span></th>
+            <th class="center" data-key="percentatgeNoJustificat" data-tipus="num">% no just.<span class="sub">del curs</span></th>
+            <th class="center" data-key="percentatge" data-tipus="num">% TOTAL</th>
+            <th class="center col-justificada" data-key="ratioJustificacio" data-tipus="num">% faltes<span class="sub">justificades</span></th>
+            <th class="center col-retard" data-key="retardsMati" data-tipus="num">Retards<span class="sub">matí</span></th>
+            <th class="center col-retard" data-key="retardsTarda" data-tipus="num">Retards<span class="sub">tarda</span></th>
+            <th data-key="diaMesFrequent" data-tipus="text">Dies de falta per dia de la setmana</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="empty-state" id="empty-resum" style="display:none;">No hi ha alumnes per mostrar.</div>
+  </div>
+
+  <script>
+    const DIES_CAT = { 0: 'Diumenge', 6: 'Dissabte' };
+
+    function avui() {
+      const d = new Date();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return d.getFullYear() + '-' + mm + '-' + dd;
+    }
+
+    // ---------- Tabs ----------
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'resum') carregarResum();
+      });
+    });
+
+    // ---------- Inicialització ----------
+    const selClasse = document.getElementById('sel-classe');
+    const inpData = document.getElementById('inp-data');
+    inpData.value = avui();
+
+    function omplirSelectorClasses(selectEl, incloureTotes, callback) {
+      google.script.run.withSuccessHandler((classes) => {
+        let html = incloureTotes ? '<option value="">Totes les classes</option>' : '';
+        html += classes.map((c) => `<option value="${c}">${c}</option>`).join('');
+        selectEl.innerHTML = html || '<option value="">Sense classes</option>';
+        if (callback) callback();
+      }).getClasses();
+    }
+
+    omplirSelectorClasses(selClasse, false, carregarGraella);
+    omplirSelectorClasses(document.getElementById('sel-classe-resum'), true);
+
+    selClasse.addEventListener('change', carregarGraella);
+    inpData.addEventListener('change', carregarGraella);
+
+    // ---------- Passar llista ----------
+    function carregarGraella() {
+      if (!selClasse.value || !inpData.value) return;
+      const tbody = document.querySelector('#taula-llista tbody');
+      tbody.innerHTML = '<tr><td colspan="7" class="loader">Carregant...</td></tr>';
+      document.getElementById('empty-llista').style.display = 'none';
+      document.getElementById('dia-info').textContent = '';
+
+      google.script.run
+        .withSuccessHandler((resposta) => {
+          const files = resposta.alumnes;
+          document.getElementById('empty-llista').style.display = files.length ? 'none' : 'block';
+          tbody.innerHTML = files.map((f) => `
+            <tr data-alumne="${escapeHtml_(f.alumne)}">
+              <td>${escapeHtml_(f.alumne)}</td>
+              <td class="center col-mati"><input type="checkbox" class="chk-mati" ${f.mati ? 'checked' : ''}></td>
+              <td class="center col-justificada"><input type="checkbox" class="chk-justificada-mati" ${f.justificadaMati ? 'checked' : ''} ${f.mati ? '' : 'disabled'}></td>
+              <td class="center col-retard"><input type="checkbox" class="chk-retard-mati" ${f.retardMati ? 'checked' : ''} ${f.mati ? 'disabled' : ''}></td>
+              <td class="center col-tarda"><input type="checkbox" class="chk-tarda" ${f.tarda ? 'checked' : ''}></td>
+              <td class="center col-justificada"><input type="checkbox" class="chk-justificada-tarda" ${f.justificadaTarda ? 'checked' : ''} ${f.tarda ? '' : 'disabled'}></td>
+              <td class="center col-retard"><input type="checkbox" class="chk-retard-tarda" ${f.retardTarda ? 'checked' : ''} ${f.tarda ? 'disabled' : ''}></td>
+            </tr>
+          `).join('');
+
+          const diaInfoEl = document.getElementById('dia-info');
+          diaInfoEl.textContent = resposta.diaSetmana + (resposta.capDeSetmana ? ' — cap de setmana' : '');
+          diaInfoEl.className = 'dia-info' + (resposta.capDeSetmana ? ' cap-setmana' : '');
+        })
+        .withFailureHandler((err) => {
+          tbody.innerHTML = `<tr><td colspan="7" class="loader">Error: ${escapeHtml_(err.message)}</td></tr>`;
+        })
+        .getGraella(selClasse.value, inpData.value);
+    }
+
+    // Si es marca Matí, s'activa la seva "Justificada matí" i es desactiva el "Retard matí"
+    // (si ha faltat tot el matí, no té sentit comptar-ho també com a retard). Igual per la tarda.
+    document.querySelector('#taula-llista tbody').addEventListener('change', (ev) => {
+      if (!ev.target.matches('.chk-mati, .chk-tarda')) return;
+      const tr = ev.target.closest('tr');
+      const chkMati = tr.querySelector('.chk-mati');
+      const chkTarda = tr.querySelector('.chk-tarda');
+
+      const chkJustMati = tr.querySelector('.chk-justificada-mati');
+      chkJustMati.disabled = !chkMati.checked;
+      if (!chkMati.checked) chkJustMati.checked = false;
+
+      const chkJustTarda = tr.querySelector('.chk-justificada-tarda');
+      chkJustTarda.disabled = !chkTarda.checked;
+      if (!chkTarda.checked) chkJustTarda.checked = false;
+
+      const chkRetardMati = tr.querySelector('.chk-retard-mati');
+      chkRetardMati.disabled = chkMati.checked;
+      if (chkMati.checked) chkRetardMati.checked = false;
+
+      const chkRetardTarda = tr.querySelector('.chk-retard-tarda');
+      chkRetardTarda.disabled = chkTarda.checked;
+      if (chkTarda.checked) chkRetardTarda.checked = false;
+    });
+
+    document.getElementById('btn-guardar').addEventListener('click', () => {
+      const btn = document.getElementById('btn-guardar');
+      const msg = document.getElementById('msg-guardar');
+      msg.className = 'msg';
+
+      const files = Array.from(document.querySelectorAll('#taula-llista tbody tr')).map((tr) => ({
+        alumne: tr.dataset.alumne,
+        mati: tr.querySelector('.chk-mati').checked,
+        tarda: tr.querySelector('.chk-tarda').checked,
+        justificadaMati: tr.querySelector('.chk-justificada-mati').checked,
+        justificadaTarda: tr.querySelector('.chk-justificada-tarda').checked,
+        retardMati: tr.querySelector('.chk-retard-mati').checked,
+        retardTarda: tr.querySelector('.chk-retard-tarda').checked,
+      }));
+
+      if (!files.length) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Guardant...';
+
+      google.script.run
+        .withSuccessHandler(() => {
+          btn.disabled = false;
+          btn.textContent = 'Guardar canvis';
+          msg.textContent = '✓ Guardat correctament.';
+          msg.className = 'msg ok';
+          setTimeout(() => { msg.className = 'msg'; }, 2500);
+        })
+        .withFailureHandler((err) => {
+          btn.disabled = false;
+          btn.textContent = 'Guardar canvis';
+          msg.textContent = 'Error: ' + err.message;
+          msg.className = 'msg err';
+        })
+        .guardarGraella(selClasse.value, inpData.value, files);
+    });
+
+    // ---------- Resum ----------
+    let resumComplet = [];
+    let ordreClau = 'percentatge';
+    let ordreDir = 'desc';
+
+    document.getElementById('sel-classe-resum').addEventListener('change', carregarResum);
+    document.getElementById('cerca-resum').addEventListener('input', pintarResum);
+
+    document.querySelectorAll('#taula-resum th[data-key]').forEach((th) => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.key;
+        if (ordreClau === key) {
+          ordreDir = ordreDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          ordreClau = key;
+          ordreDir = th.dataset.tipus === 'text' ? 'asc' : 'desc';
+        }
+        pintarResum();
+      });
+    });
+
+    function actualitzarIndicadorsOrdre() {
+      document.querySelectorAll('#taula-resum th[data-key]').forEach((th) => {
+        th.classList.remove('actiu');
+        const fletxaExistent = th.querySelector('.fletxa');
+        if (fletxaExistent) fletxaExistent.remove();
+        if (th.dataset.key === ordreClau) {
+          th.classList.add('actiu');
+          const span = document.createElement('span');
+          span.className = 'fletxa';
+          span.textContent = ordreDir === 'asc' ? '▲' : '▼';
+          th.appendChild(span);
+        }
+      });
+    }
+
+    function carregarResum() {
+      const tbody = document.querySelector('#taula-resum tbody');
+      tbody.innerHTML = '<tr><td colspan="11" class="loader">Carregant...</td></tr>';
+      const classe = document.getElementById('sel-classe-resum').value;
+
+      document.getElementById('taula-resum').classList.toggle('oculta-classe', !!classe);
+
+      google.script.run
+        .withSuccessHandler((files) => {
+          resumComplet = files;
+          pintarResum();
+        })
+        .withFailureHandler((err) => {
+          tbody.innerHTML = `<tr><td colspan="11" class="loader">Error: ${escapeHtml_(err.message)}</td></tr>`;
+        })
+        .getResum(classe);
+    }
+
+    function pintarResum() {
+      const tbody = document.querySelector('#taula-resum tbody');
+      const cerca = document.getElementById('cerca-resum').value.trim().toLowerCase();
+      let files = cerca
+        ? resumComplet.filter((f) => f.alumne.toLowerCase().includes(cerca))
+        : resumComplet.slice();
+
+      files.sort((a, b) => {
+        const va = a[ordreClau];
+        const vb = b[ordreClau];
+        // Els "—" (sense faltes, valor null) sempre van al final, sigui quin sigui l'ordre.
+        if (va === null && vb === null) return 0;
+        if (va === null) return 1;
+        if (vb === null) return -1;
+        const cmp = typeof va === 'string' ? va.localeCompare(vb, 'ca') : va - vb;
+        return ordreDir === 'asc' ? cmp : -cmp;
+      });
+
+      actualitzarIndicadorsOrdre();
+      document.getElementById('empty-resum').style.display = files.length ? 'none' : 'block';
+      tbody.innerHTML = files.map((f) => `
+        <tr>
+          <td>${escapeHtml_(f.alumne)}</td>
+          <td class="col-classe">${escapeHtml_(f.classe)}</td>
+          <td class="center col-justificada">${f.diesJustificats}</td>
+          <td class="center">${f.diesFaltaNoJustificades}</td>
+          <td class="center col-justificada">${f.percentatgeJustificat}%</td>
+          <td class="center">${f.percentatgeNoJustificat}%</td>
+          <td class="center"><span class="badge ${f.nivell}">${f.percentatge}%</span></td>
+          <td class="center col-justificada">${f.ratioJustificacio === null ? '—' : f.ratioJustificacio + '%'}</td>
+          <td class="center col-retard">${f.retardsMati}</td>
+          <td class="center col-retard">${f.retardsTarda}</td>
+          <td>${escapeHtml_(f.diaMesFrequent)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function escapeHtml_(s) {
+      const div = document.createElement('div');
+      div.textContent = s == null ? '' : String(s);
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
