@@ -2,7 +2,7 @@
 
 A lightweight school attendance tracker built with **Google Apps Script**, created to replace a slow, unwieldy multi-tab Excel spreadsheet used by an entire primary school to log daily student absences.
 
-> Built as an AI pair-programming project with [Claude](https://claude.com/claude-code): I drove the requirements, design decisions, and testing (including catching a caching bug, a silent-failure bug, and a performance issue under load), while Claude handled the implementation.
+> Built as an AI pair-programming project with [Claude](https://claude.com/claude-code): I drove the requirements, design decisions, and testing (including spotting a **cache** bug, a silent-failure bug, and a performance issue under load), while Claude handled the implementation.
 
 ## The problem
 
