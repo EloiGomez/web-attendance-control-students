@@ -14,9 +14,9 @@ The original workflow was a single Excel file with one enormous grid per class (
 
 A small web app served directly from Google Apps Script, backed by a Google Sheet used purely as a data store (never opened directly by teachers):
 
-- **Take attendance by class and day**: pick a class and a date, see every student in a checkbox grid (morning / afternoon / justified / late-arrival), and save the whole day at once.
-- **Live absence summary**: automatic attendance percentage per student (weighted — a missed morning counts differently than a missed afternoon, matching the school's real timetable), split by justified/unjustified absence, with a progressive color-coded alert level, a weekday-pattern breakdown, a search box, and sortable columns.
-- **Access control**: restricted to an explicit allow-list of staff emails, checked server-side on every request — not just an obscure link.
+- **Take attendance by class and day**: pick a class and a date, see every student in a checkbox grid (morning / afternoon / late-arrival, each with its own "justified" flag), and save the whole day at once. A morning absence and a morning late-arrival are mutually exclusive and share the same "justified" checkbox, since only one of them can actually have happened.
+- **Live absence summary**: automatic attendance percentage per student (weighted — a missed morning counts differently than a missed afternoon, matching the school's real timetable), split by justified/unjustified absence, a separate justified/unjustified breakdown for late arrivals, a progressive color-coded alert level, a weekday-pattern breakdown, a search box, and sortable columns.
+- **Access control**: restricted to an explicit allow-list of staff emails, checked server-side on every request — not just an obscure link. The admin sheets (config, roster, staff list, promotion mapping) are additionally protected at the spreadsheet level so only the file's owner can edit them, even though regular staff need Editor access for the app itself to work.
 - **Admin tooling**: a one-click end-of-year "promote all classes" tool (with an editable class-mapping sheet and a repeater flag per student), plus synthetic test-data generators for load-testing with hundreds of students.
 - **Performance**: the backend batches all spreadsheet reads, reuses a single `Spreadsheet` handle per execution instead of re-fetching it repeatedly, and caches the computed summary (gzip-compressed to fit Apps Script's cache size limit) so repeat views are near-instant until the underlying data actually changes.
 - Automatic dark mode (`prefers-color-scheme`), a mobile-friendly layout with sticky headers/columns, and no external dependencies — plain HTML/CSS/JS served through `HtmlService`.
@@ -40,7 +40,7 @@ No local environment or build step is needed — everything runs inside Google's
 3. In the default `Code.gs` file, delete the placeholder content and paste in this repo's [`Code.gs`](Code.gs).
 4. Add a new **HTML** file (the `+` next to "Files"), name it exactly `Index` (no extension), and paste in this repo's [`Index.html`](Index.html).
 5. Save the project.
-6. In the function dropdown at the top, select **`setup`** and click **Run**. The first run will ask you to authorize the script — accept it. This creates the `Config`, `Students`, `Teachers`, `Records` and `Promotion` sheets with example data and sane defaults.
+6. In the function dropdown at the top, select **`setup`** and click **Run**. The first run will ask you to authorize the script — accept it. This creates the `Config`, `Students`, `Teachers`, `Records` and `Promotion` sheets with example data and sane defaults, and protects everything except `Records` so only the spreadsheet's owner can edit it.
 7. (Optional) Run **`generateTestStudents`** and **`generateTestRecords`** to load a few hundred synthetic students and attendance records, useful for trying out the summary view and sorting/search without typing anything by hand.
 8. Add the emails of anyone who should have access to the **`Teachers`** sheet — if that sheet is empty, the app lets anyone in, so this step matters before sharing the link.
 9. Go to **Deploy → New deployment**, choose type **Web app**. Set:

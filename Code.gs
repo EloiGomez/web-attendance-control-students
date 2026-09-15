@@ -3,9 +3,16 @@
  *
  * Sheets used by this script:
  *  - Config   : course settings (school days, weight per half-day, alert threshold)
- *  - Students : student roster (Class | Student)
+ *  - Students : student roster
  *  - Teachers : emails authorized to access the web app (allow-list)
  *  - Records  : one row per student and day with any mark (absence or late arrival)
+ *
+ * "Justified morning"/"Justified afternoon" are shared between an absence and
+ * a late arrival in that same half-day: since "Morning" (absence) and "Late
+ * morning" (late arrival) can never both be true at once (checking one
+ * disables the other in the UI), one justified flag per half-day is enough
+ * to cover whichever of the two actually happened — no need for separate
+ * "justified late arrival" columns.
  *
  * Run setup() ONCE from the Apps Script editor to create these sheets with
  * their headers and default values.
@@ -162,19 +169,50 @@ function setup() {
   let records = ss.getSheetByName(SHEET_RECORDS);
   if (!records) {
     records = ss.insertSheet(SHEET_RECORDS);
-    records.getRange(1, 1, 1, 11).setValues([
-      ['Date', 'Class', 'Student', 'Morning', 'Afternoon', 'Justified Morning', 'Justified Afternoon', 'Late Morning', 'Late Afternoon', 'Updated By', 'Last Updated'],
-    ]);
+    records.getRange(1, 1, 1, 11).setValues([[
+      'Date', 'Class', 'Student', 'Morning', 'Afternoon',
+      'Justified Morning', 'Justified Afternoon',
+      'Late Morning', 'Late Afternoon',
+      'Updated By', 'Last Updated',
+    ]]);
     records.setFrozenRows(1);
     records.autoResizeColumns(1, 11);
   }
 
+  // Protects the admin tabs: even if a teacher is an Editor on the whole
+  // Sheet (needed for the web app to work), they won't be able to edit or
+  // unprotect these — only the Sheet's owner can (protected ranges/sheets
+  // always stay editable by the file owner, regardless of the editors list).
+  // "Students" is included here because the web app only ever reads it,
+  // never writes to it — "Records" is deliberately left unprotected, since
+  // teachers need to write there every day through the app.
+  protectSheet_(cfg);
+  protectSheet_(teachers);
+  protectSheet_(promotion);
+  protectSheet_(students);
+
   SpreadsheetApp.getUi().alert(
     'Sheets created successfully.\n\n' +
+    'The Config, Teachers, Promotion and Students tabs are now protected: ' +
+    'only the Sheet\'s owner can edit them, even if other teachers are ' +
+    'Editors on the Sheet in general.\n\n' +
     'Remember: add the emails of authorized teachers to the "Teachers" tab ' +
     'before sharing the link with everyone.\n\n' +
     'You can now go to Deploy > New deployment.'
   );
+}
+
+/**
+ * Protects an entire sheet so that only whoever runs this function (normally
+ * the Sheet's owner) can edit it. If it was already protected by an earlier
+ * setup() run, reuses the existing protection instead of duplicating it.
+ */
+function protectSheet_(sheet) {
+  const protections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+  const protection = protections.length ? protections[0] : sheet.protect();
+  protection.setDescription('Admin only');
+  if (protection.canDomainEdit()) protection.setDomainEdit(false);
+  protection.removeEditors(protection.getEditors());
 }
 
 /**
@@ -271,8 +309,10 @@ function generateTestRecords(daysBack) {
         lateAfternoon = true;
       }
 
-      if (morning) justifiedMorning = Math.random() < 0.5;
-      if (afternoon) justifiedAfternoon = Math.random() < 0.5;
+      // "Justified" is shared between an absence and a late arrival in the
+      // same half-day (they're mutually exclusive, so this is unambiguous).
+      if (morning || lateMorning) justifiedMorning = Math.random() < 0.5;
+      if (afternoon || lateAfternoon) justifiedAfternoon = Math.random() < 0.5;
 
       if (morning || afternoon || lateMorning || lateAfternoon) {
         rows.push([date, className, student, morning, afternoon, justifiedMorning, justifiedAfternoon, lateMorning, lateAfternoon, email, now]);
@@ -301,13 +341,6 @@ function generateTestRecords(daysBack) {
  *
  * Students with the "Do not promote (repeating)" box checked in the
  * "Students" tab stay in the same class and are left untouched.
- *
- * Run it manually ONCE when the new school year starts. Before doing so:
- *  1. Check/fill in the "Promotion" tab with your real class names.
- *  2. Check the repeating box for any students who need it.
- *  3. If you want to keep the outgoing year's attendance history, copy the
- *     content of "Records" to another tab (e.g. "Records 2025-26") before
- *     clearing it, and update TOTAL_SCHOOL_DAYS in "Config" for the new year.
  */
 function promoteToNextGrade() {
   const promotionSheet = spreadsheet_().getSheetByName(SHEET_PROMOTION);
@@ -381,8 +414,7 @@ function promoteToNextGrade() {
 
 /**
  * FOR PERFORMANCE TESTING ONLY: calls getSummary() (with all classes, the
- * heaviest case) and shows how long it took in milliseconds. Useful to check
- * whether it's worth optimizing further for your actual data volume.
+ * heaviest case) and shows how long it took in milliseconds.
  */
 function measurePerformance() {
   const start = new Date().getTime();
@@ -478,6 +510,8 @@ function getAttendanceGrid(className, date) {
 /**
  * rows = [{ student, morning, afternoon, justifiedMorning, justifiedAfternoon, lateMorning, lateAfternoon }, ...]
  * for a specific class and date. Updates, creates or deletes the matching row for each student as needed.
+ * "justifiedMorning"/"justifiedAfternoon" apply to whichever of the absence
+ * (morning/afternoon) or the late arrival (lateMorning/lateAfternoon) is set.
  */
 function saveAttendanceGrid(className, date, rows) {
   if (!className || !date || !rows) throw new Error('Missing data.');
@@ -579,7 +613,12 @@ function getSummary(classFilter) {
   const studentsSheet = spreadsheet_().getSheetByName(SHEET_STUDENTS);
   const studentValues = studentsSheet.getRange(2, 1, Math.max(studentsSheet.getLastRow() - 1, 0), 2).getValues();
 
-  const emptyStats_ = () => ({ unjustifiedDays: 0, justifiedDays: 0, lateMornings: 0, lateAfternoons: 0, byWeekday: [0, 0, 0, 0, 0, 0, 0] });
+  const emptyStats_ = () => ({
+    unjustifiedDays: 0, justifiedDays: 0,
+    lateMorningsJustified: 0, lateMorningsUnjustified: 0,
+    lateAfternoonsJustified: 0, lateAfternoonsUnjustified: 0,
+    byWeekday: [0, 0, 0, 0, 0, 0, 0],
+  });
   const stats = {};
   const key_ = (className, student) => className + ' ||| ' + student;
 
@@ -602,19 +641,23 @@ function getSummary(classFilter) {
         stats[k] = Object.assign({ className, student }, emptyStats_());
       }
 
-      // If for some reason (e.g. a manual Sheet edit) a half-day has both an
-      // absence and a late arrival marked, the absence takes priority and the
-      // late arrival is ignored, so the same incident isn't counted twice.
-      if (lateMorning === true && morning !== true) stats[k].lateMornings += 1;
-      if (lateAfternoon === true && afternoon !== true) stats[k].lateAfternoons += 1;
-
+      // "Morning" (absence) and "Late morning" (late arrival) are mutually
+      // exclusive for the same half-day, so whichever one is set decides
+      // what "justifiedMorning" actually refers to. Same for the afternoon.
       if (morning === true) {
         if (justifiedMorning === true) stats[k].justifiedDays += weightMorning;
         else stats[k].unjustifiedDays += weightMorning;
+      } else if (lateMorning === true) {
+        if (justifiedMorning === true) stats[k].lateMorningsJustified += 1;
+        else stats[k].lateMorningsUnjustified += 1;
       }
+
       if (afternoon === true) {
         if (justifiedAfternoon === true) stats[k].justifiedDays += weightAfternoon;
         else stats[k].unjustifiedDays += weightAfternoon;
+      } else if (lateAfternoon === true) {
+        if (justifiedAfternoon === true) stats[k].lateAfternoonsJustified += 1;
+        else stats[k].lateAfternoonsUnjustified += 1;
       }
 
       if (morning === true || afternoon === true) {
@@ -635,7 +678,11 @@ function getSummary(classFilter) {
 
       // Justification rate: what % of THEIR OWN absences are justified
       // (different from justifiedPct, which is over the whole school year).
+      // Kept as a number|null for sorting, plus a ready-to-display string
+      // (computed here, not in the frontend) so the web page never has to
+      // guess how to render a missing value.
       const justificationRate = total > 0 ? round_((s.justifiedDays / total) * 100) : null;
+      const justificationRateLabel = justificationRate === null ? '—' : justificationRate + '%';
 
       // Breakdown of every weekday with at least one absence, sorted from most to least frequent.
       const mostFrequentDay = s.byWeekday
@@ -645,10 +692,7 @@ function getSummary(classFilter) {
         .map((d) => `${d.name} (${d.n})`)
         .join(', ') || '—';
 
-      // Progressive 3-step scale, relative to the configured alert threshold:
-      // below half the threshold = green, between half and the threshold = amber,
-      // at or above the threshold = red. This way the color change starts
-      // before the exact limit.
+      // Progressive 3-step scale, relative to the configured alert threshold.
       let level = 'ok';
       if (totalPct >= threshold) level = 'alert';
       else if (totalPct >= threshold / 2) level = 'warning';
@@ -663,10 +707,13 @@ function getSummary(classFilter) {
         justifiedPct: round_(justifiedPct),
         totalPct: round_(totalPct),
         justificationRate,
+        justificationRateLabel,
         isAlert: totalPct >= threshold,
         level,
-        lateMornings: s.lateMornings,
-        lateAfternoons: s.lateAfternoons,
+        lateMorningsJustified: s.lateMorningsJustified,
+        lateMorningsUnjustified: s.lateMorningsUnjustified,
+        lateAfternoonsJustified: s.lateAfternoonsJustified,
+        lateAfternoonsUnjustified: s.lateAfternoonsUnjustified,
         mostFrequentDay,
       };
     })

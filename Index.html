@@ -181,7 +181,7 @@
     input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
     .chk-morning { accent-color: var(--blue); }
     .chk-afternoon { accent-color: var(--amber); }
-    .chk-justified { accent-color: var(--green); }
+    .chk-justified-morning, .chk-justified-afternoon { accent-color: var(--green); }
     .chk-late-morning, .chk-late-afternoon { accent-color: var(--purple); }
     .badge {
       display: inline-block;
@@ -257,12 +257,12 @@
         <thead>
           <tr>
             <th>Student</th>
+            <th class="center col-late">Late<span class="sub">morning</span></th>
             <th class="center col-morning">Morning</th>
             <th class="center col-justified">Justified<span class="sub">morning</span></th>
-            <th class="center col-late">Late<span class="sub">morning</span></th>
+            <th class="center col-late">Late<span class="sub">afternoon</span></th>
             <th class="center col-afternoon">Afternoon</th>
             <th class="center col-justified">Justified<span class="sub">afternoon</span></th>
-            <th class="center col-late">Late<span class="sub">afternoon</span></th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -303,8 +303,10 @@
             <th class="center" data-key="unjustifiedPct" data-type="num">% unjustified<span class="sub">of year</span></th>
             <th class="center" data-key="totalPct" data-type="num">% TOTAL</th>
             <th class="center col-justified" data-key="justificationRate" data-type="num">% absences<span class="sub">justified</span></th>
-            <th class="center col-late" data-key="lateMornings" data-type="num">Late<span class="sub">morning</span></th>
-            <th class="center col-late" data-key="lateAfternoons" data-type="num">Late<span class="sub">afternoon</span></th>
+            <th class="center col-late" data-key="lateMorningsJustified" data-type="num">Late<span class="sub">morning, justif.</span></th>
+            <th class="center col-late" data-key="lateMorningsUnjustified" data-type="num">Late<span class="sub">morning, unjustif.</span></th>
+            <th class="center col-late" data-key="lateAfternoonsJustified" data-type="num">Late<span class="sub">afternoon, justif.</span></th>
+            <th class="center col-late" data-key="lateAfternoonsUnjustified" data-type="num">Late<span class="sub">afternoon, unjustif.</span></th>
             <th data-key="mostFrequentDay" data-type="text">Absences by weekday</th>
           </tr>
         </thead>
@@ -365,17 +367,21 @@
         .withSuccessHandler((response) => {
           const students = response.students;
           document.getElementById('empty-attendance').style.display = students.length ? 'none' : 'block';
-          tbody.innerHTML = students.map((s) => `
+          tbody.innerHTML = students.map((s) => {
+            const morningEvent = s.morning || s.lateMorning;
+            const afternoonEvent = s.afternoon || s.lateAfternoon;
+            return `
             <tr data-student="${escapeHtml_(s.student)}">
               <td>${escapeHtml_(s.student)}</td>
-              <td class="center col-morning"><input type="checkbox" class="chk-morning" ${s.morning ? 'checked' : ''}></td>
-              <td class="center col-justified"><input type="checkbox" class="chk-justified-morning" ${s.justifiedMorning ? 'checked' : ''} ${s.morning ? '' : 'disabled'}></td>
               <td class="center col-late"><input type="checkbox" class="chk-late-morning" ${s.lateMorning ? 'checked' : ''} ${s.morning ? 'disabled' : ''}></td>
-              <td class="center col-afternoon"><input type="checkbox" class="chk-afternoon" ${s.afternoon ? 'checked' : ''}></td>
-              <td class="center col-justified"><input type="checkbox" class="chk-justified-afternoon" ${s.justifiedAfternoon ? 'checked' : ''} ${s.afternoon ? '' : 'disabled'}></td>
+              <td class="center col-morning"><input type="checkbox" class="chk-morning" ${s.morning ? 'checked' : ''} ${s.lateMorning ? 'disabled' : ''}></td>
+              <td class="center col-justified"><input type="checkbox" class="chk-justified-morning" ${s.justifiedMorning ? 'checked' : ''} ${morningEvent ? '' : 'disabled'}></td>
               <td class="center col-late"><input type="checkbox" class="chk-late-afternoon" ${s.lateAfternoon ? 'checked' : ''} ${s.afternoon ? 'disabled' : ''}></td>
+              <td class="center col-afternoon"><input type="checkbox" class="chk-afternoon" ${s.afternoon ? 'checked' : ''} ${s.lateAfternoon ? 'disabled' : ''}></td>
+              <td class="center col-justified"><input type="checkbox" class="chk-justified-afternoon" ${s.justifiedAfternoon ? 'checked' : ''} ${afternoonEvent ? '' : 'disabled'}></td>
             </tr>
-          `).join('');
+          `;
+          }).join('');
 
           const dayInfoEl = document.getElementById('day-info');
           dayInfoEl.textContent = response.weekday + (response.isWeekend ? ' — weekend' : '');
@@ -387,29 +393,38 @@
         .getAttendanceGrid(classSelect.value, dateInput.value);
     }
 
-    // Checking Morning enables its "Justified morning" box and disables "Late morning"
-    // (a full morning absence isn't a late arrival). Same logic for the afternoon.
+    // Morning (absence) and Late morning (late arrival) are mutually
+    // exclusive: checking either one disables (and un-checks) the other, in
+    // BOTH directions. "Justified morning" is shared by whichever of the
+    // two is set — it's only enabled once one of them is checked. Same for
+    // the afternoon pair.
     document.querySelector('#attendance-table tbody').addEventListener('change', (ev) => {
-      if (!ev.target.matches('.chk-morning, .chk-afternoon')) return;
+      if (!ev.target.matches('.chk-morning, .chk-afternoon, .chk-late-morning, .chk-late-afternoon')) return;
       const tr = ev.target.closest('tr');
       const chkMorning = tr.querySelector('.chk-morning');
       const chkAfternoon = tr.querySelector('.chk-afternoon');
-
-      const chkJustMorning = tr.querySelector('.chk-justified-morning');
-      chkJustMorning.disabled = !chkMorning.checked;
-      if (!chkMorning.checked) chkJustMorning.checked = false;
-
-      const chkJustAfternoon = tr.querySelector('.chk-justified-afternoon');
-      chkJustAfternoon.disabled = !chkAfternoon.checked;
-      if (!chkAfternoon.checked) chkJustAfternoon.checked = false;
-
       const chkLateMorning = tr.querySelector('.chk-late-morning');
-      chkLateMorning.disabled = chkMorning.checked;
-      if (chkMorning.checked) chkLateMorning.checked = false;
-
       const chkLateAfternoon = tr.querySelector('.chk-late-afternoon');
+      const chkJustMorning = tr.querySelector('.chk-justified-morning');
+      const chkJustAfternoon = tr.querySelector('.chk-justified-afternoon');
+
+      if (ev.target === chkMorning && chkMorning.checked) chkLateMorning.checked = false;
+      if (ev.target === chkLateMorning && chkLateMorning.checked) chkMorning.checked = false;
+      if (ev.target === chkAfternoon && chkAfternoon.checked) chkLateAfternoon.checked = false;
+      if (ev.target === chkLateAfternoon && chkLateAfternoon.checked) chkAfternoon.checked = false;
+
+      chkMorning.disabled = chkLateMorning.checked;
+      chkLateMorning.disabled = chkMorning.checked;
+      chkAfternoon.disabled = chkLateAfternoon.checked;
       chkLateAfternoon.disabled = chkAfternoon.checked;
-      if (chkAfternoon.checked) chkLateAfternoon.checked = false;
+
+      const morningEvent = chkMorning.checked || chkLateMorning.checked;
+      chkJustMorning.disabled = !morningEvent;
+      if (!morningEvent) chkJustMorning.checked = false;
+
+      const afternoonEvent = chkAfternoon.checked || chkLateAfternoon.checked;
+      chkJustAfternoon.disabled = !afternoonEvent;
+      if (!afternoonEvent) chkJustAfternoon.checked = false;
     });
 
     document.getElementById('save-btn').addEventListener('click', () => {
@@ -487,7 +502,7 @@
 
     function loadSummary() {
       const tbody = document.querySelector('#summary-table tbody');
-      tbody.innerHTML = '<tr><td colspan="11" class="loader">Loading...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" class="loader">Loading...</td></tr>';
       const className = document.getElementById('summary-class-select').value;
 
       document.getElementById('summary-table').classList.toggle('hide-class', !!className);
@@ -498,7 +513,7 @@
           renderSummary();
         })
         .withFailureHandler((err) => {
-          tbody.innerHTML = `<tr><td colspan="11" class="loader">Error: ${escapeHtml_(err.message)}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="13" class="loader">Error: ${escapeHtml_(err.message)}</td></tr>`;
         })
         .getSummary(className);
     }
@@ -514,9 +529,9 @@
         const va = a[sortKey];
         const vb = b[sortKey];
         // "—" entries (no absences, null value) always go last, regardless of sort direction.
-        if (va === null && vb === null) return 0;
-        if (va === null) return 1;
-        if (vb === null) return -1;
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
         const cmp = typeof va === 'string' ? va.localeCompare(vb, 'en') : va - vb;
         return sortDir === 'asc' ? cmp : -cmp;
       });
@@ -532,9 +547,11 @@
           <td class="center col-justified">${r.justifiedPct}%</td>
           <td class="center">${r.unjustifiedPct}%</td>
           <td class="center"><span class="badge ${r.level}">${r.totalPct}%</span></td>
-          <td class="center col-justified">${r.justificationRate === null ? '—' : r.justificationRate + '%'}</td>
-          <td class="center col-late">${r.lateMornings}</td>
-          <td class="center col-late">${r.lateAfternoons}</td>
+          <td class="center col-justified">${escapeHtml_(r.justificationRateLabel)}</td>
+          <td class="center col-late">${r.lateMorningsJustified}</td>
+          <td class="center col-late">${r.lateMorningsUnjustified}</td>
+          <td class="center col-late">${r.lateAfternoonsJustified}</td>
+          <td class="center col-late">${r.lateAfternoonsUnjustified}</td>
           <td>${escapeHtml_(r.mostFrequentDay)}</td>
         </tr>
       `).join('');
