@@ -1,3 +1,5 @@
+**English** | [Català](README.ca.md) | [Español](README.es.md)
+
 # Attendance Control
 
 A lightweight school attendance tracker built with **Google Apps Script**, created to replace a slow, unwieldy multi-tab Excel spreadsheet used by an entire primary school to log daily student absences.
